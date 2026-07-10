@@ -208,11 +208,29 @@ required. It's also reachable manually at `/api/track-cron` for testing.
    generated the token), and `ZENDESK_API_TOKEN`.
 
 **Shopify:**
-1. Shopify Admin → Settings → Apps and sales channels → Develop apps →
-   Create an app → Configure Admin API scopes → grant `read_orders` only →
-   Install app → copy the Admin API access token (shown once).
-2. In Netlify, add `SHOPIFY_STORE_DOMAIN` (e.g. `masjidal.myshopify.com`)
-   and `SHOPIFY_ADMIN_TOKEN`.
+
+Shopify's simple "reveal a static token" custom-app flow wasn't available on
+this account - it routed straight into the dev dashboard (Client ID/Secret,
+OAuth-based) instead. To bridge that, this repo includes a one-time OAuth
+install helper (`/api/shopify-install` and `/api/shopify-callback`):
+
+1. In the Shopify **dev dashboard** app you already created (Client ID +
+   Secret screen): go to its **Configuration** and set:
+   - **App URL**: `https://<your-netlify-domain>/api/shopify-install`
+   - **Allowed redirection URL(s)**: `https://<your-netlify-domain>/api/shopify-callback`
+   - **Scopes**: `read_orders`
+   - Then try **Release** again - it was likely failing before because these
+     fields were empty.
+2. In Netlify, add `SHOPIFY_STORE_DOMAIN` (your `xxxxx.myshopify.com`
+   domain), `SHOPIFY_API_KEY` (the Client ID), and `SHOPIFY_API_SECRET`
+   (reveal it on that same Settings screen) → redeploy.
+3. Visit `https://<your-netlify-domain>/api/shopify-install` in a browser
+   while logged into the store admin. Approve the install (it'll ask for
+   `read_orders` access). You'll land on a page showing an access token
+   once.
+4. Copy that value into Netlify as `SHOPIFY_ADMIN_TOKEN` → redeploy. Done -
+   `SHOPIFY_API_KEY`/`SHOPIFY_API_SECRET` aren't needed again after this
+   (safe to leave them, or remove them later).
 
 Either one works independently — set up just Zendesk, just Shopify, or both.
 See the top of this document for what this feature does and its limitations
