@@ -1662,7 +1662,8 @@ async function askAI(){
     var result=await resp.json();
     var box=document.getElementById(qId);
     if(!resp.ok||!result.answer){
-      box.textContent=result.message||'Masjidal AI is not configured yet (needs a Gemini API key) - see SETUP.md.';
+      console.error('Masjidal AI error response:',resp.status,result);
+      box.textContent=result.message||result.error||('Masjidal AI request failed (HTTP '+resp.status+'). Check the ai-ask function logs in Netlify.')+(result.detail?' — '+result.detail:'');
     }else{
       box.textContent=result.answer;
       if(result.table&&result.table.length){
