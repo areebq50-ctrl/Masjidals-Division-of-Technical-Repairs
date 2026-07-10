@@ -48,18 +48,35 @@ exports.handler = async function (event) {
     if (question.length > 2000) return json(400, { error: 'Question is too long' });
     if (data.length > 3000) data = data.slice(0, 3000);
 
-    var model = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+    // "gemini-flash-latest" is Google's rolling alias for their current
+    // recommended fast model, so this doesn't go stale the way a pinned
+    // version does (gemini-2.0-flash, hardcoded here previously, was
+    // shut down by Google on 2026-06-01). Pin a specific version via
+    // GEMINI_MODEL if you want stability over auto-updates instead.
+    var primaryModel = process.env.GEMINI_MODEL || 'gemini-flash-latest';
     var userPrompt = 'Repair records (JSON array, ' + data.length + ' records):\n' + JSON.stringify(data) + '\n\nQuestion: ' + question;
 
-    var r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + apiKey, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-        generationConfig: { responseMimeType: 'application/json', responseSchema: RESPONSE_SCHEMA, temperature: 0.2 }
-      })
-    });
+    function callGemini(model) {
+      return fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + apiKey, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+          contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+          generationConfig: { responseMimeType: 'application/json', responseSchema: RESPONSE_SCHEMA, temperature: 0.2 }
+        })
+      });
+    }
+
+    var r = await callGemini(primaryModel);
+
+    // If the model name itself is the problem (renamed/retired again in the
+    // future) and no explicit GEMINI_MODEL override is set, retry once
+    // against a specific known-good version rather than failing outright.
+    if (!r.ok && r.status === 404 && !process.env.GEMINI_MODEL) {
+      console.error('Gemini model "'+primaryModel+'" not found, retrying with gemini-2.5-flash');
+      r = await callGemini('gemini-2.5-flash');
+    }
 
     if (!r.ok) {
       var errText = await r.text();

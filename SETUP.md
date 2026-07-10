@@ -194,9 +194,17 @@ required. It's also reachable manually at `/api/track-cron` for testing.
    key** → create a key (free tier is generous for this volume of use).
 2. In Netlify: Site settings → Environment variables → add `GEMINI_API_KEY`
    → redeploy.
-3. That's it — the "Ask AI" page (visible to admins in the sidebar) starts
-   answering questions. `GEMINI_MODEL` is optional if you want a different
-   model than the default (`gemini-2.0-flash`).
+3. That's it — the "Masjidal AI" page (visible to admins in the sidebar and
+   as a shortcut button in the top bar) starts answering questions.
+   `GEMINI_MODEL` is optional if you want to pin a specific model version;
+   the default is `gemini-flash-latest`, Google's rolling alias for their
+   current recommended fast model, chosen specifically so this doesn't go
+   stale the way a hardcoded version number eventually does (an earlier
+   version of this pinned to `gemini-2.0-flash`, which Google shut down on
+   2026-06-01 - if Masjidal AI ever stops working with a "model not found"
+   style error again in the future, that's almost certainly why - check
+   [ai.google.dev/gemini-api/docs/models](https://ai.google.dev/gemini-api/docs/models)
+   for current model names and set `GEMINI_MODEL` accordingly).
 
 ## 4. Turn on Zendesk/Shopify customer lookup (optional)
 
