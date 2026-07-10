@@ -41,13 +41,18 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);-we
 
 /* LOGIN */
 #loginScreen{min-height:100vh;display:none;align-items:center;justify-content:center;background:linear-gradient(135deg,#0d1117 0%,#1a2236 100%)}
-.login-box{background:#fff;border-radius:16px;padding:44px 40px;width:420px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,.25)}
-.login-logo{display:flex;align-items:center;gap:12px;margin-bottom:28px;padding-bottom:24px;border-bottom:1px solid var(--border)}
-.login-logo img{width:52px;height:52px;object-fit:contain;background:#ffffff;border-radius:10px;padding:4px;border:1px solid #e2e5eb}
+.login-box{background:#fff;border-radius:16px;padding:36px 40px;width:420px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.login-logo{display:flex;align-items:center;gap:12px;margin-bottom:20px;padding-bottom:18px;border-bottom:1px solid var(--border)}
+.login-logo img{width:44px;height:44px;object-fit:contain;background:#ffffff;border-radius:10px;padding:4px;border:1px solid #e2e5eb}
 .login-logo h1{font-size:17px;font-weight:700;letter-spacing:-.3px}
 .login-logo p{font-size:11px;color:var(--text3);font-weight:500;letter-spacing:.04em;text-transform:uppercase;margin-top:1px}
-.login-box h2{font-size:20px;font-weight:700;letter-spacing:-.4px;margin-bottom:4px}
-.login-box>p{font-size:13px;color:var(--text2);margin-bottom:20px}
+.login-box h2{font-size:20px;font-weight:700;letter-spacing:-.4px;margin-bottom:14px}
+.login-steps{display:flex;align-items:center;gap:8px;margin-bottom:16px}
+.login-step-num{width:20px;height:20px;border-radius:50%;background:var(--surface2);color:var(--text3);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:.15s}
+.login-step-num.active{background:var(--accent);color:#fff}
+.login-step-lbl{font-size:12px;color:var(--text3);font-weight:600}
+.login-step-num.active+.login-step-lbl{color:var(--text2)}
+.login-step-line{flex:1;height:1px;background:var(--border);min-width:12px}
 .user-cards{display:flex;flex-direction:column;gap:8px;margin-bottom:18px;max-height:260px;overflow-y:auto}
 .user-card{display:flex;align-items:center;gap:12px;padding:13px 14px;border:2px solid var(--border);border-radius:10px;cursor:pointer;background:var(--surface2);transition:.15s;flex-shrink:0}
 .user-card:hover,.user-card.sel{border-color:var(--accent);background:var(--accent-light)}
@@ -59,11 +64,14 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);-we
 .rt-tech{background:#dbeafe;color:#1e40af}
 .rt-general{background:#dcfce7;color:#14532d}
 .rt-support{background:#f3e8ff;color:#6b21a8}
-.pin-group{margin-bottom:14px}
+.pin-group{margin-bottom:14px;transition:opacity .15s}
 .pin-group label{font-size:12px;font-weight:600;color:var(--text2);display:block;margin-bottom:5px}
 .pin-input{width:100%;padding:10px 13px;border:2px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit;outline:none;transition:.15s}
 .pin-input:focus{border-color:var(--accent)}
-.pin-keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.pin-input:disabled{background:var(--surface2);cursor:not-allowed;color:var(--text3)}
+.login-divider{border-top:1px solid var(--border);margin:18px 0 14px}
+.pin-keypad{display:none;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+@media(pointer:coarse){.pin-keypad{display:grid}}
 .pk-btn{padding:14px 0;font-size:18px;font-weight:600;border:2px solid var(--border);border-radius:10px;background:var(--surface2);cursor:pointer;transition:.15s;font-family:inherit;color:var(--text);-webkit-tap-highlight-color:transparent}
 .pk-btn:hover{border-color:var(--accent);background:var(--accent-light)}
 .pk-btn:active{transform:scale(.96)}
@@ -99,6 +107,43 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);-we
 .topbar-left{display:flex;align-items:center;gap:12px}
 .topbar-title{font-size:16px;font-weight:700;letter-spacing:-.3px}
 .content{padding:28px 36px;flex:1;width:100%;max-width:100%}
+
+/* MASJIDAL AI CHAT PANEL */
+.ai-panel{display:flex;flex-direction:column;height:min(720px,calc(100vh - 190px));min-height:420px;background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.ai-panel-hdr{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border);flex-shrink:0}
+.ai-avatar{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--accent),#7c3aed);color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.ai-avatar svg{width:18px;height:18px}
+.ai-avatar-lg{width:48px;height:48px;border-radius:14px;margin-bottom:14px}
+.ai-avatar-lg svg{width:24px;height:24px}
+.ai-panel-title{font-size:14px;font-weight:700;letter-spacing:-.2px}
+.ai-panel-sub{font-size:11px;color:var(--text3)}
+.ai-panel-body{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:16px}
+.ai-empty{margin:auto;text-align:center;max-width:420px;display:flex;flex-direction:column;align-items:center}
+.ai-empty-title{font-size:15px;font-weight:700;letter-spacing:-.2px;margin-bottom:4px}
+.ai-empty-sub{font-size:12px;color:var(--text2);margin-bottom:18px;line-height:1.5}
+.ai-chips{display:flex;flex-direction:column;gap:8px;width:100%}
+.ai-chip{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;font-size:12.5px;font-family:inherit;color:var(--text2);cursor:pointer;text-align:left;transition:.15s}
+.ai-chip:hover{border-color:var(--accent);background:var(--accent-light);color:var(--text)}
+.ai-msg-row{display:flex;gap:10px;max-width:88%}
+.ai-msg-row.user{align-self:flex-end;flex-direction:row-reverse}
+.ai-msg-row.ai{align-self:flex-start}
+.ai-msg-avatar{width:26px;height:26px;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.ai-msg-row.ai .ai-msg-avatar{background:linear-gradient(135deg,var(--accent),#7c3aed);color:#fff}
+.ai-msg-row.ai .ai-msg-avatar svg{width:14px;height:14px}
+.ai-bubble{padding:10px 14px;border-radius:14px;font-size:13.5px;line-height:1.55}
+.ai-msg-row.user .ai-bubble{background:var(--accent);color:#fff;border-bottom-right-radius:4px}
+.ai-msg-row.ai .ai-bubble{background:var(--surface2);color:var(--text);border-bottom-left-radius:4px}
+.ai-bubble table{width:100%;border-collapse:collapse;margin-top:10px;font-size:12px}
+.ai-bubble td{padding:5px 8px;border-bottom:1px solid var(--border)}
+.ai-bubble td:last-child{text-align:right;font-weight:600}
+.ai-panel-inputbar{display:flex;align-items:flex-end;gap:10px;padding:14px 16px;border-top:1px solid var(--border);flex-shrink:0}
+.ai-input{flex:1;resize:none;border:1px solid var(--border);border-radius:20px;padding:10px 16px;font-size:13.5px;font-family:inherit;outline:none;max-height:120px;line-height:1.4;transition:.15s}
+.ai-input:focus{border-color:var(--accent)}
+.ai-send{width:36px;height:36px;border-radius:50%;background:var(--accent);color:#fff;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:.15s}
+.ai-send:hover{background:#155db8}
+.ai-send:disabled{opacity:.5;cursor:not-allowed}
+.ai-send svg{width:16px;height:16px}
+.ai-disclaimer{font-size:11px;color:var(--text3);margin-top:10px;text-align:center}
 
 /* SYNC INDICATOR */
 .sync-dot{width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block;margin-right:5px}
@@ -331,11 +376,15 @@ input:checked+.slider:before{transform:translateX(16px)}
       <div><h1>Masjidal</h1><p>Division of Technical Repairs</p></div>
     </div>
     <h2>Sign In</h2>
-    <p>Select your account then enter your PIN</p>
+    <div class="login-steps">
+      <span class="login-step-num active" id="loginStep1">1</span><span class="login-step-lbl">Select account</span>
+      <span class="login-step-line"></span>
+      <span class="login-step-num" id="loginStep2">2</span><span class="login-step-lbl">Enter PIN</span>
+    </div>
     <div class="user-cards" id="userCards"></div>
-    <div class="pin-group">
+    <div class="pin-group" id="pinGroup">
       <label>PIN</label>
-      <input class="pin-input" type="password" id="pinInput" placeholder="Enter PIN" maxlength="8" inputmode="none" onkeydown="if(event.key==='Enter')doLogin()">
+      <input class="pin-input" type="password" id="pinInput" placeholder="Select an account above first" maxlength="8" inputmode="none" disabled onkeydown="if(event.key==='Enter')doLogin()">
       <div class="login-err" id="loginErr">Incorrect PIN. Try again.</div>
       <div class="pin-keypad" id="pinKeypad">
         <button type="button" class="pk-btn" onclick="pinKeyPress('1')">1</button>
@@ -355,7 +404,8 @@ input:checked+.slider:before{transform:translateX(16px)}
     <button class="login-btn" id="loginBtn" onclick="doLogin()">
       <span>Sign In</span>
     </button>
-    <div style="text-align:center;margin-top:14px">
+    <div class="login-divider"></div>
+    <div style="text-align:center">
       <button onclick="doSupportLogin()" style="background:none;border:none;cursor:pointer;color:#6b21a8;font-size:13px;font-weight:600;font-family:inherit;text-decoration:underline">Support Login (View Only)</button>
     </div>
   </div>
@@ -394,7 +444,7 @@ input:checked+.slider:before{transform:translateX(16px)}
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>Staff Stats
       </div>
       <div class="nav-item admin-only" id="nav-askai" onclick="showPage('askai')">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a1 1 0 0 1 1 1v1.06A8.004 8.004 0 0 1 19.94 11H21a1 1 0 1 1 0 2h-1.06A8.004 8.004 0 0 1 13 19.94V21a1 1 0 1 1-2 0v-1.06A8.004 8.004 0 0 1 4.06 13H3a1 1 0 1 1 0-2h1.06A8.004 8.004 0 0 1 11 4.06V3a1 1 0 0 1 1-1zm0 4a6 6 0 1 0 0 12 6 6 0 0 0 0-12zm0 3a1 1 0 0 1 1 1v1.59l1.7 1.7a1 1 0 0 1-1.4 1.42l-2-2A1 1 0 0 1 11 11V10a1 1 0 0 1 1-1z"/></svg>Ask AI
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a1 1 0 0 1 1 1v1.06A8.004 8.004 0 0 1 19.94 11H21a1 1 0 1 1 0 2h-1.06A8.004 8.004 0 0 1 13 19.94V21a1 1 0 1 1-2 0v-1.06A8.004 8.004 0 0 1 4.06 13H3a1 1 0 1 1 0-2h1.06A8.004 8.004 0 0 1 11 4.06V3a1 1 0 0 1 1-1zm0 4a6 6 0 1 0 0 12 6 6 0 0 0 0-12zm0 3a1 1 0 0 1 1 1v1.59l1.7 1.7a1 1 0 0 1-1.4 1.42l-2-2A1 1 0 0 1 11 11V10a1 1 0 0 1 1-1z"/></svg>Masjidal AI
       </div>
       <div class="nav-item admin-only" id="nav-employees" onclick="showPage('employees')">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>Employees
@@ -566,13 +616,34 @@ input:checked+.slider:before{transform:translateX(16px)}
     </div>
 
     <div class="content hidden admin-only" id="page-askai">
-      <div style="font-size:15px;font-weight:700;letter-spacing:-.3px;margin-bottom:4px">Ask AI</div>
-      <div style="font-size:12px;color:var(--text2);margin-bottom:20px">Ask questions about your repair data - issue counts, device breakdowns, android versions, and more. Answers are generated by Gemini from the repair records currently loaded (no customer contact info is sent).</div>
-      <div id="aiConvo" style="display:flex;flex-direction:column;gap:14px;margin-bottom:16px;max-height:55vh;overflow-y:auto"></div>
-      <div style="display:flex;gap:8px;align-items:flex-end">
-        <textarea class="fc" id="aiQuestion" placeholder="e.g. How many devices have a cracked screen? Which device size has the most issues? Android 6 vs 11 breakdown?" style="min-height:52px;flex:1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();askAI();}"></textarea>
-        <button class="btn btn-primary" id="aiAskBtn" onclick="askAI()">Ask</button>
+      <div class="ai-panel">
+        <div class="ai-panel-hdr">
+          <div class="ai-avatar"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8L12 2z"/></svg></div>
+          <div>
+            <div class="ai-panel-title">Masjidal AI</div>
+            <div class="ai-panel-sub">Ask about your repair data</div>
+          </div>
+        </div>
+        <div id="aiConvo" class="ai-panel-body">
+          <div class="ai-empty" id="aiEmptyState">
+            <div class="ai-avatar ai-avatar-lg"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8L12 2z"/></svg></div>
+            <div class="ai-empty-title">Ask Masjidal AI anything about your repairs</div>
+            <div class="ai-empty-sub">Issue counts, device breakdowns, android versions, and more - answered from your repair records.</div>
+            <div class="ai-chips">
+              <button type="button" class="ai-chip" onclick="askAIChip(this)">How many devices have a cracked screen?</button>
+              <button type="button" class="ai-chip" onclick="askAIChip(this)">Which device size has the most issues?</button>
+              <button type="button" class="ai-chip" onclick="askAIChip(this)">Android 6 vs 11 breakdown</button>
+            </div>
+          </div>
+        </div>
+        <div class="ai-panel-inputbar">
+          <textarea id="aiQuestion" class="ai-input" placeholder="Message Masjidal AI…" rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();askAI();}" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"></textarea>
+          <button class="ai-send" id="aiAskBtn" onclick="askAI()" title="Send" aria-label="Send">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
+          </button>
+        </div>
       </div>
+      <div class="ai-disclaimer">No customer contact info is sent — only a trimmed snapshot of repair data (type, size, issue, status, dates).</div>
     </div>
 
     <div class="content hidden admin-only" id="page-employees">
@@ -1132,11 +1203,21 @@ function renderUserCards(){
       '<span>'+rDesc+'</span></div></div>';
   }).join('');
 }
-function selectEmp(id){selectedEmpId=id;renderUserCards();document.getElementById('pinInput').focus();}
+function selectEmp(id){
+  selectedEmpId=id;renderUserCards();
+  var pin=document.getElementById('pinInput');
+  pin.disabled=false;pin.placeholder='Enter PIN';pin.value='';
+  pin.focus();
+  var s1=document.getElementById('loginStep1'),s2=document.getElementById('loginStep2');
+  if(s1)s1.classList.add('active');if(s2)s2.classList.add('active');
+  var pg=document.getElementById('pinGroup');if(pg)pg.classList.remove('pin-group-inactive');
+  var err=document.getElementById('loginErr');if(err)err.style.display='none';
+}
 // On-screen numeric keypad for the PIN field - faster/more reliable to tap
 // on a shop-floor tablet/phone than the native keyboard. Physical keyboard
 // typing into #pinInput still works exactly as before.
 function pinKeyPress(d){
+  if(!selectedEmpId)return;
   var el=document.getElementById('pinInput');if(!el||el.value.length>=8)return;
   el.value+=d;
   var err=document.getElementById('loginErr');if(err)err.style.display='none';
@@ -1193,8 +1274,10 @@ function logout(){
   stopPolling();currentUser=null;selectedEmpId=null;isSupportMode=false;
   document.getElementById('app').style.display='none';
   document.getElementById('loginScreen').style.display='flex';
-  document.getElementById('pinInput').value='';
+  var pin=document.getElementById('pinInput');pin.value='';pin.disabled=true;pin.placeholder='Select an account above first';
   document.getElementById('loginErr').style.display='none';
+  var s1=document.getElementById('loginStep1'),s2=document.getElementById('loginStep2');
+  if(s1)s1.classList.add('active');if(s2)s2.classList.remove('active');
   document.getElementById('supportBanner').classList.add('hidden');
   document.getElementById('newRepairBtn').style.display='';
   // Hide support-only nav
@@ -1317,7 +1400,7 @@ function showPage(p){
   document.querySelectorAll('.nav-item').forEach(function(el){el.classList.remove('active');});
   var pg=document.getElementById('page-'+p);if(pg)pg.classList.remove('hidden');
   var nv=document.getElementById('nav-'+p);if(nv)nv.classList.add('active');
-  var titles={dashboard:'Dashboard',allrepairs:'All Repairs',myrepairs:'Customer Repairs',myrepairs2:'My Repairs',completed:'Completed Repairs',supportview:'Customer Repairs',stats:'Staff Stats',askai:'Ask AI',employees:'Employees',activity:'Activity Log',settings:'Settings'};
+  var titles={dashboard:'Dashboard',allrepairs:'All Repairs',myrepairs:'Customer Repairs',myrepairs2:'My Repairs',completed:'Completed Repairs',supportview:'Customer Repairs',stats:'Staff Stats',askai:'Masjidal AI',employees:'Employees',activity:'Activity Log',settings:'Settings'};
   document.getElementById('topbarTitle').textContent=titles[p]||p;
   closeSidebar();
   if(p==='dashboard')renderDashboard();
@@ -1557,16 +1640,25 @@ function exportTableCSV(table,filenamePrefix){
 // Gemini-backed /api/ai-ask function, and renders the answer (and optional
 // table) into the Ask AI conversation.
 var _aiTableStore={};
+var AI_AVATAR_SVG='<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8L12 2z"/></svg>';
+function askAIChip(el){
+  document.getElementById('aiQuestion').value=el.textContent;
+  askAI();
+}
 async function askAI(){
   var qEl=document.getElementById('aiQuestion');
   var question=qEl.value.trim();
   if(!question)return;
   var btn=document.getElementById('aiAskBtn');
   var convo=document.getElementById('aiConvo');
+  var empty=document.getElementById('aiEmptyState');if(empty)empty.remove();
   var qId='q'+Date.now();
-  convo.insertAdjacentHTML('beforeend','<div style="align-self:flex-end;background:var(--accent);color:#fff;padding:10px 14px;border-radius:12px 12px 2px 12px;max-width:80%;font-size:13px">'+question.replace(/</g,'&lt;')+'</div><div id="'+qId+'" style="align-self:flex-start;background:var(--surface2);padding:10px 14px;border-radius:12px 12px 12px 2px;max-width:90%;font-size:13px;color:var(--text2)">Thinking…</div>');
+  convo.insertAdjacentHTML('beforeend',
+    '<div class="ai-msg-row user"><div class="ai-bubble">'+question.replace(/</g,'&lt;')+'</div></div>'+
+    '<div class="ai-msg-row ai"><div class="ai-msg-avatar">'+AI_AVATAR_SVG+'</div><div class="ai-bubble" id="'+qId+'">Thinking…</div></div>'
+  );
   convo.scrollTop=convo.scrollHeight;
-  qEl.value='';
+  qEl.value='';qEl.style.height='auto';
   btn.disabled=true;
   try{
     // PII-free snapshot: no zdid/ordnum/serial/custName/custEmail/custPhone.
@@ -1579,15 +1671,15 @@ async function askAI(){
     var result=await resp.json();
     var box=document.getElementById(qId);
     if(!resp.ok||!result.answer){
-      box.textContent=result.message||'Ask AI is not configured yet (needs a Gemini API key) - see SETUP.md.';
+      box.textContent=result.message||'Masjidal AI is not configured yet (needs a Gemini API key) - see SETUP.md.';
     }else{
       box.textContent=result.answer;
       if(result.table&&result.table.length){
         var tblId='t'+Date.now();
         _aiTableStore[tblId]=result.table;
-        var tblHtml='<table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:12px">'+
-          result.table.map(function(row){return'<tr><td style="padding:4px 8px;border-bottom:1px solid var(--border)">'+String(row.label).replace(/</g,'&lt;')+'</td><td style="padding:4px 8px;border-bottom:1px solid var(--border);text-align:right;font-weight:600">'+String(row.value).replace(/</g,'&lt;')+'</td></tr>';}).join('')+
-          '</table><button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick=\'exportTableCSV(_aiTableStore["'+tblId+'"],"ai-answer")\'>Export CSV</button>';
+        var tblHtml='<table>'+
+          result.table.map(function(row){return'<tr><td>'+String(row.label).replace(/</g,'&lt;')+'</td><td>'+String(row.value).replace(/</g,'&lt;')+'</td></tr>';}).join('')+
+          '</table><button class="btn btn-ghost btn-sm" style="margin-top:10px" onclick=\'exportTableCSV(_aiTableStore["'+tblId+'"],"masjidal-ai")\'>Export CSV</button>';
         box.insertAdjacentHTML('beforeend',tblHtml);
       }
     }
