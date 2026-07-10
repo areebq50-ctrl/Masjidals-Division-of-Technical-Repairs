@@ -63,6 +63,11 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);-we
 .pin-group label{font-size:12px;font-weight:600;color:var(--text2);display:block;margin-bottom:5px}
 .pin-input{width:100%;padding:10px 13px;border:2px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit;outline:none;transition:.15s}
 .pin-input:focus{border-color:var(--accent)}
+.pin-keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.pk-btn{padding:14px 0;font-size:18px;font-weight:600;border:2px solid var(--border);border-radius:10px;background:var(--surface2);cursor:pointer;transition:.15s;font-family:inherit;color:var(--text);-webkit-tap-highlight-color:transparent}
+.pk-btn:hover{border-color:var(--accent);background:var(--accent-light)}
+.pk-btn:active{transform:scale(.96)}
+.pk-side{font-size:13px;color:var(--text2)}
 .login-btn{width:100%;padding:11px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;transition:.15s;display:flex;align-items:center;justify-content:center;gap:8px}
 .login-btn:hover{background:#155db8}
 .login-btn:disabled{opacity:.6;cursor:not-allowed}
@@ -330,8 +335,22 @@ input:checked+.slider:before{transform:translateX(16px)}
     <div class="user-cards" id="userCards"></div>
     <div class="pin-group">
       <label>PIN</label>
-      <input class="pin-input" type="password" id="pinInput" placeholder="Enter PIN" maxlength="8" onkeydown="if(event.key==='Enter')doLogin()">
+      <input class="pin-input" type="password" id="pinInput" placeholder="Enter PIN" maxlength="8" inputmode="none" onkeydown="if(event.key==='Enter')doLogin()">
       <div class="login-err" id="loginErr">Incorrect PIN. Try again.</div>
+      <div class="pin-keypad" id="pinKeypad">
+        <button type="button" class="pk-btn" onclick="pinKeyPress('1')">1</button>
+        <button type="button" class="pk-btn" onclick="pinKeyPress('2')">2</button>
+        <button type="button" class="pk-btn" onclick="pinKeyPress('3')">3</button>
+        <button type="button" class="pk-btn" onclick="pinKeyPress('4')">4</button>
+        <button type="button" class="pk-btn" onclick="pinKeyPress('5')">5</button>
+        <button type="button" class="pk-btn" onclick="pinKeyPress('6')">6</button>
+        <button type="button" class="pk-btn" onclick="pinKeyPress('7')">7</button>
+        <button type="button" class="pk-btn" onclick="pinKeyPress('8')">8</button>
+        <button type="button" class="pk-btn" onclick="pinKeyPress('9')">9</button>
+        <button type="button" class="pk-btn pk-side" onclick="pinKeyClear()">Clear</button>
+        <button type="button" class="pk-btn" onclick="pinKeyPress('0')">0</button>
+        <button type="button" class="pk-btn pk-side" onclick="pinKeyBackspace()">⌫</button>
+      </div>
     </div>
     <button class="login-btn" id="loginBtn" onclick="doLogin()">
       <span>Sign In</span>
@@ -373,6 +392,9 @@ input:checked+.slider:before{transform:translateX(16px)}
       <div class="sb-sec admin-only">Admin</div>
       <div class="nav-item admin-only" id="nav-stats" onclick="showPage('stats')">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>Staff Stats
+      </div>
+      <div class="nav-item admin-only" id="nav-askai" onclick="showPage('askai')">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a1 1 0 0 1 1 1v1.06A8.004 8.004 0 0 1 19.94 11H21a1 1 0 1 1 0 2h-1.06A8.004 8.004 0 0 1 13 19.94V21a1 1 0 1 1-2 0v-1.06A8.004 8.004 0 0 1 4.06 13H3a1 1 0 1 1 0-2h1.06A8.004 8.004 0 0 1 11 4.06V3a1 1 0 0 1 1-1zm0 4a6 6 0 1 0 0 12 6 6 0 0 0 0-12zm0 3a1 1 0 0 1 1 1v1.59l1.7 1.7a1 1 0 0 1-1.4 1.42l-2-2A1 1 0 0 1 11 11V10a1 1 0 0 1 1-1z"/></svg>Ask AI
       </div>
       <div class="nav-item admin-only" id="nav-employees" onclick="showPage('employees')">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>Employees
@@ -500,6 +522,8 @@ input:checked+.slider:before{transform:translateX(16px)}
           <input class="search-input" id="doneSearch" placeholder="Search ZD ID, serial…" oninput="renderCompleted()">
         </div>
         <select class="fsel" id="doneTypeF" onchange="renderCompleted()"><option value="">All Types</option><option value="customer">Customer</option><option value="general">General</option><option value="amazon">Amazon</option></select>
+        <select class="fsel" id="doneDeliveryF" onchange="renderCompleted()"><option value="">All Shipments</option><option value="delivered">Delivered</option><option value="awaiting">Awaiting Delivery</option></select>
+        <button class="btn btn-ghost btn-sm" onclick="exportRepairsCSV()">Export CSV</button>
       </div>
       <div class="table-wrap">
         <div class="t-head" style="grid-template-columns:90px 1fr 100px 120px 140px 100px 70px">
@@ -539,6 +563,16 @@ input:checked+.slider:before{transform:translateX(16px)}
       <div style="font-size:15px;font-weight:700;letter-spacing:-.3px;margin-bottom:4px;margin-top:32px">Top Issues Reported</div>
       <div style="font-size:12px;color:var(--text2);margin-bottom:20px">Most common issue categories, broken down by device size. Grouped by keyword match on the issue description.</div>
       <div class="staff-grid" id="topIssuesGrid"></div>
+    </div>
+
+    <div class="content hidden admin-only" id="page-askai">
+      <div style="font-size:15px;font-weight:700;letter-spacing:-.3px;margin-bottom:4px">Ask AI</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:20px">Ask questions about your repair data - issue counts, device breakdowns, android versions, and more. Answers are generated by Gemini from the repair records currently loaded (no customer contact info is sent).</div>
+      <div id="aiConvo" style="display:flex;flex-direction:column;gap:14px;margin-bottom:16px;max-height:55vh;overflow-y:auto"></div>
+      <div style="display:flex;gap:8px;align-items:flex-end">
+        <textarea class="fc" id="aiQuestion" placeholder="e.g. How many devices have a cracked screen? Which device size has the most issues? Android 6 vs 11 breakdown?" style="min-height:52px;flex:1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();askAI();}"></textarea>
+        <button class="btn btn-primary" id="aiAskBtn" onclick="askAI()">Ask</button>
+      </div>
     </div>
 
     <div class="content hidden admin-only" id="page-employees">
@@ -584,8 +618,19 @@ input:checked+.slider:before{transform:translateX(16px)}
       <!-- Customer Fields -->
       <div id="customerFields">
         <div class="form-row">
-          <div class="fg"><label>Zendesk ID <span style="color:var(--red)">*</span></label><input class="fc" id="f-zdid" placeholder="12345"></div>
-          <div class="fg"><label>Order Number <span style="color:var(--red)">*</span></label><input class="fc" id="f-ordnum" placeholder="#12345"></div>
+          <div class="fg"><label>Zendesk ID <span style="color:var(--red)">*</span></label><input class="fc" id="f-zdid" placeholder="12345" oninput="checkRelatedTickets()"></div>
+          <div class="fg"><label>Order Number <span style="color:var(--red)">*</span></label><input class="fc" id="f-ordnum" placeholder="#12345" oninput="checkRelatedTickets()"></div>
+        </div>
+        <div class="fg hidden" id="relatedTicketBanner" style="background:var(--accent-light);border:1px solid var(--accent);border-radius:8px;padding:10px 12px;font-size:12px;margin-bottom:14px;color:var(--accent)"></div>
+        <div class="form-row">
+          <div class="fg"><label>Customer Name</label><input class="fc" id="f-custname" placeholder="Optional"></div>
+          <div class="fg"><label>Customer Email</label><input class="fc" id="f-custemail" placeholder="Optional" type="email"></div>
+        </div>
+        <div class="form-row">
+          <div class="fg"><label>Customer Phone</label><input class="fc" id="f-custphone" placeholder="Optional" type="tel"></div>
+          <div class="fg" style="display:flex;align-items:flex-end;padding-bottom:1px">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="lookupCustomer()" id="lookupCustBtn" style="width:100%;justify-content:center">Look up customer (Zendesk/Shopify)</button>
+          </div>
         </div>
         <div class="form-row">
           <div class="fg"><label>ZD Assigned To</label>
@@ -722,6 +767,7 @@ input:checked+.slider:before{transform:translateX(16px)}
       <div class="det-sec hidden" id="d-repair-notes-sec"><div class="sec-lbl">Repair Notes</div><div class="notes-box" id="d-repair-notes"></div></div>
       <div class="det-sec hidden" id="d-notes-sec"><div class="sec-lbl">Additional Notes</div><div class="notes-box" id="d-notes"></div></div>
       <div class="det-sec hidden" id="d-closing-sec"><div class="sec-lbl">Closing Details</div><div class="det-grid" id="d-closing"></div></div>
+      <div class="det-sec hidden" id="d-related-sec"><div class="sec-lbl">Related Tickets</div><div id="d-related-body"></div></div>
       <div class="det-sec hidden" id="d-tracking-sec">
         <div class="sec-lbl" style="display:flex;align-items:center;justify-content:space-between">
           <span>Shipment Tracking</span>
@@ -919,7 +965,7 @@ async function loadActivity(){
 
 var _detailId=null;
 var currentUser=null,selectedEmpId=null,warrantyVal=null,repairType='customer';
-var outcomeVal='',editingId=null,trackRepairId=null,closeRepairId=null,editEmpId=null;
+var outcomeVal='',editingId=null,trackRepairId=null,closeRepairId=null,editEmpId=null,pendingRelatedTo=null,_relCheckTimer=null;
 var currentPage='dashboard',_repairs=[],_employees=[],_activity=[];
 var isSupportMode=false;
 
@@ -1087,6 +1133,16 @@ function renderUserCards(){
   }).join('');
 }
 function selectEmp(id){selectedEmpId=id;renderUserCards();document.getElementById('pinInput').focus();}
+// On-screen numeric keypad for the PIN field - faster/more reliable to tap
+// on a shop-floor tablet/phone than the native keyboard. Physical keyboard
+// typing into #pinInput still works exactly as before.
+function pinKeyPress(d){
+  var el=document.getElementById('pinInput');if(!el||el.value.length>=8)return;
+  el.value+=d;
+  var err=document.getElementById('loginErr');if(err)err.style.display='none';
+}
+function pinKeyBackspace(){var el=document.getElementById('pinInput');if(el)el.value=el.value.slice(0,-1);}
+function pinKeyClear(){var el=document.getElementById('pinInput');if(el)el.value='';}
 async function doLogin(){
   var pin=document.getElementById('pinInput').value;
   var err=document.getElementById('loginErr');
@@ -1255,13 +1311,13 @@ function showGlobalSearch(){
 function showPage(p){
   // Access control
   if(isSupportMode&&p!=='supportview'&&p!=='dashboard'){return;}
-  if(!isAdmin()&&(p==='stats'||p==='employees'||p==='activity'||p==='settings')){return;}
+  if(!isAdmin()&&(p==='stats'||p==='employees'||p==='activity'||p==='settings'||p==='askai')){return;}
   currentPage=p;
   document.querySelectorAll('[id^="page-"]').forEach(function(el){el.classList.add('hidden');});
   document.querySelectorAll('.nav-item').forEach(function(el){el.classList.remove('active');});
   var pg=document.getElementById('page-'+p);if(pg)pg.classList.remove('hidden');
   var nv=document.getElementById('nav-'+p);if(nv)nv.classList.add('active');
-  var titles={dashboard:'Dashboard',allrepairs:'All Repairs',myrepairs:'Customer Repairs',myrepairs2:'My Repairs',completed:'Completed Repairs',supportview:'Customer Repairs',stats:'Staff Stats',employees:'Employees',activity:'Activity Log',settings:'Settings'};
+  var titles={dashboard:'Dashboard',allrepairs:'All Repairs',myrepairs:'Customer Repairs',myrepairs2:'My Repairs',completed:'Completed Repairs',supportview:'Customer Repairs',stats:'Staff Stats',askai:'Ask AI',employees:'Employees',activity:'Activity Log',settings:'Settings'};
   document.getElementById('topbarTitle').textContent=titles[p]||p;
   closeSidebar();
   if(p==='dashboard')renderDashboard();
@@ -1461,11 +1517,99 @@ function renderTable(cid,data,gs,showTech){
       '</div></div>';
   }).join('');
 }
+// Exports every repair currently loaded (all types/statuses, not just the
+// filtered view) as a CSV that opens directly in Excel/Sheets.
+function csvEscape(v){
+  if(v===null||v===undefined)return'';
+  var s=String(v);
+  if(/[",\n]/.test(s))return'"'+s.replace(/"/g,'""')+'"';
+  return s;
+}
+function exportRepairsCSV(){
+  var cols=['ticket','type','status','outcome','zdid','ordnum','serial','size','location','issue','year','android','custName','custEmail','custPhone','assignedTo','createdBy','createdAt','closedAt','closedBy','updatedAt'];
+  var header=cols.join(',');
+  var rows=_repairs.map(function(r){
+    return cols.map(function(c){return csvEscape(r[c]);}).join(',');
+  });
+  var csv=header+'\r\n'+rows.join('\r\n');
+  var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url;a.download='dtr-repairs-'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('Exported '+_repairs.length+' repairs to CSV');
+}
+// Exports a generic {label,value} table (as returned by Ask AI) to CSV.
+function exportTableCSV(table,filenamePrefix){
+  var header='label,value';
+  var rows=table.map(function(row){return csvEscape(row.label)+','+csvEscape(row.value);});
+  var csv=header+'\r\n'+rows.join('\r\n');
+  var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url;a.download=(filenamePrefix||'ai-export')+'-'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// Sends the question plus a trimmed, PII-free snapshot of repair data to the
+// Gemini-backed /api/ai-ask function, and renders the answer (and optional
+// table) into the Ask AI conversation.
+var _aiTableStore={};
+async function askAI(){
+  var qEl=document.getElementById('aiQuestion');
+  var question=qEl.value.trim();
+  if(!question)return;
+  var btn=document.getElementById('aiAskBtn');
+  var convo=document.getElementById('aiConvo');
+  var qId='q'+Date.now();
+  convo.insertAdjacentHTML('beforeend','<div style="align-self:flex-end;background:var(--accent);color:#fff;padding:10px 14px;border-radius:12px 12px 2px 12px;max-width:80%;font-size:13px">'+question.replace(/</g,'&lt;')+'</div><div id="'+qId+'" style="align-self:flex-start;background:var(--surface2);padding:10px 14px;border-radius:12px 12px 12px 2px;max-width:90%;font-size:13px;color:var(--text2)">Thinking…</div>');
+  convo.scrollTop=convo.scrollHeight;
+  qEl.value='';
+  btn.disabled=true;
+  try{
+    // PII-free snapshot: no zdid/ordnum/serial/custName/custEmail/custPhone.
+    var data=_repairs.slice(0,3000).map(function(r){
+      return {type:r.type,size:r.size,issue:r.issue,year:r.year,android:r.android,status:r.status,
+        outcome:r.outcome,createdAt:r.createdAt,closedAt:r.closedAt,
+        trackingStatus:(getTracking(r)||{}).statusText||null};
+    });
+    var resp=await fetch('/api/ai-ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:question,data:data})});
+    var result=await resp.json();
+    var box=document.getElementById(qId);
+    if(!resp.ok||!result.answer){
+      box.textContent=result.message||'Ask AI is not configured yet (needs a Gemini API key) - see SETUP.md.';
+    }else{
+      box.textContent=result.answer;
+      if(result.table&&result.table.length){
+        var tblId='t'+Date.now();
+        _aiTableStore[tblId]=result.table;
+        var tblHtml='<table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:12px">'+
+          result.table.map(function(row){return'<tr><td style="padding:4px 8px;border-bottom:1px solid var(--border)">'+String(row.label).replace(/</g,'&lt;')+'</td><td style="padding:4px 8px;border-bottom:1px solid var(--border);text-align:right;font-weight:600">'+String(row.value).replace(/</g,'&lt;')+'</td></tr>';}).join('')+
+          '</table><button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick=\'exportTableCSV(_aiTableStore["'+tblId+'"],"ai-answer")\'>Export CSV</button>';
+        box.insertAdjacentHTML('beforeend',tblHtml);
+      }
+    }
+  }catch(e){
+    console.error(e);
+    var box2=document.getElementById(qId);if(box2)box2.textContent='Something went wrong asking AI. Try again.';
+  }
+  convo.scrollTop=convo.scrollHeight;
+  btn.disabled=false;
+}
+function getTracking(r){
+  if(!r||!r.tracking)return null;
+  try{return typeof r.tracking==='string'?JSON.parse(r.tracking):r.tracking;}catch(e){return null;}
+}
 function renderCompleted(){
   if(!currentUser)return;
   var tf=(document.getElementById('doneTypeF')||{value:''}).value;
+  var df=(document.getElementById('doneDeliveryF')||{value:''}).value;
   var d=_repairs.filter(function(r){return r.status==='Closed'&&canSeeRep(r);});
   if(tf)d=d.filter(function(r){return r.type===tf;});
+  if(df==='delivered')d=d.filter(function(r){var tr=getTracking(r);return tr&&tr.status==='Delivered';});
+  else if(df==='awaiting')d=d.filter(function(r){var tr=getTracking(r);return tr&&tr.number&&tr.status!=='Delivered';});
   d=fsearch(d,'doneSearch');
   var el=document.getElementById('completedBody');if(!el)return;
   if(!d.length){el.innerHTML='<div class="empty"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg><p>No completed repairs</p></div>';return;}
@@ -1503,6 +1647,9 @@ function openDetail(id){
     fields.push(['Zendesk ID',zdDisplay]);
     fields.push(['Order Number',r.ordnum||'--']);
     if(r.size)fields.push(['Device Size',r.size]);
+    if(r.custName)fields.push(['Customer Name',r.custName]);
+    if(r.custEmail)fields.push(['Customer Email',r.custEmail]);
+    if(r.custPhone)fields.push(['Customer Phone',r.custPhone]);
     
     // Use separate year/android fields (fallback to notes parsing for old records)
     var _yr=r.year||'--';
@@ -1659,6 +1806,7 @@ function openDetail(id){
     closingSec.classList.add('hidden');
   }
 
+  renderRelatedTickets(r);
   renderTrackingSection(r);
 
   // Metadata section - ONLY creation and editing info
@@ -2012,6 +2160,54 @@ function setRType(t){
   var ig=document.getElementById('invoiceGroup');
   if(ig) ig.classList.add('hidden');
 }
+
+// Looks for existing tickets on the same Zendesk ID / Order Number so a
+// repeat repair gets linked as a follow-up instead of overwriting history.
+// Debounced since it runs on every keystroke.
+function checkRelatedTickets(){
+  clearTimeout(_relCheckTimer);
+  _relCheckTimer=setTimeout(function(){
+    var banner=document.getElementById('relatedTicketBanner');if(!banner)return;
+    pendingRelatedTo=null;
+    if(editingId){banner.classList.add('hidden');return;} // only relevant when creating
+    var zdid=(document.getElementById('f-zdid')||{value:''}).value.trim();
+    var ordnum=(document.getElementById('f-ordnum')||{value:''}).value.trim();
+    if(!zdid&&!ordnum){banner.classList.add('hidden');return;}
+    var matches=_repairs.filter(function(r){
+      if(r.type!=='customer')return false;
+      return (zdid&&r.zdid&&r.zdid===zdid)||(ordnum&&r.ordnum&&r.ordnum===ordnum);
+    }).sort(function(a,b){return new Date(b.createdAt)-new Date(a.createdAt);});
+    if(!matches.length){banner.classList.add('hidden');return;}
+    var latest=matches[0];
+    pendingRelatedTo=latest.id;
+    banner.classList.remove('hidden');
+    banner.innerHTML='Found '+matches.length+' previous ticket'+(matches.length>1?'s':'')+' for this '+(zdid&&latest.zdid===zdid?'Zendesk ID':'order')+': <strong>'+latest.ticket+'</strong> ('+latest.status+', '+fmt(latest.createdAt)+'). This new ticket will be linked as a follow-up.';
+  },300);
+}
+
+// Pulls customer contact info from Zendesk/Shopify via the lookup-customer
+// function (no-ops gracefully if neither integration is configured server-side).
+async function lookupCustomer(){
+  var btn=document.getElementById('lookupCustBtn');
+  var zdid=(document.getElementById('f-zdid')||{value:''}).value.trim();
+  var ordnum=(document.getElementById('f-ordnum')||{value:''}).value.trim();
+  if(!zdid&&!ordnum){toast('Enter a Zendesk ID or Order Number first.');return;}
+  if(btn){btn.disabled=true;btn.textContent='Looking up...';}
+  try{
+    var resp=await fetch('/api/lookup-customer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({zdid:zdid,ordnum:ordnum})});
+    var data=await resp.json();
+    if(!resp.ok||!data.found){toast(data.message||'No customer found for that ID/order.');}
+    else{
+      var nameEl=document.getElementById('f-custname'),emailEl=document.getElementById('f-custemail'),phoneEl=document.getElementById('f-custphone');
+      if(nameEl&&!nameEl.value.trim()&&data.name)nameEl.value=data.name;
+      if(emailEl&&!emailEl.value.trim()&&data.email)emailEl.value=data.email;
+      if(phoneEl&&!phoneEl.value.trim()&&data.phone)phoneEl.value=data.phone;
+      toast('Customer info filled in from '+(data.source||'lookup')+' - review before saving.');
+    }
+  }catch(e){console.error(e);toast('Lookup unavailable right now.');}
+  if(btn){btn.disabled=false;btn.textContent='Look up customer (Zendesk/Shopify)';}
+}
+
 function setWarranty(v){
   warrantyVal=v;
   document.getElementById('wy').className='to'+(v===true?' sy':'');
@@ -2050,10 +2246,11 @@ function populateYearDropdown(){
 
 
 function openNewRepair(){
-  editingId=null;warrantyVal=null;outcomeVal='';
+  editingId=null;warrantyVal=null;outcomeVal='';pendingRelatedTo=null;
   document.getElementById('rmTitle').textContent='New Repair';
   // Clear ALL form fields
-  ['f-zdid','f-ordnum','f-serial','f-location','f-amztrack','f-issue','f-notes','f-repair-notes','f-location-cust','f-year','f-android','f-warranty-date','f-assigned-to'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
+  ['f-zdid','f-ordnum','f-serial','f-location','f-amztrack','f-issue','f-notes','f-repair-notes','f-location-cust','f-year','f-android','f-warranty-date','f-assigned-to','f-custname','f-custemail','f-custphone'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
+  var relBanner=document.getElementById('relatedTicketBanner');if(relBanner)relBanner.classList.add('hidden');
   var tvCb2=document.getElementById('f-techvisible');if(tvCb2)tvCb2.checked=true; // Default: visible to technicians
   var fsize=document.getElementById('f-size');if(fsize)fsize.value='';
   var fsizec=document.getElementById('f-size-cust');if(fsizec)fsizec.value='';
@@ -2079,12 +2276,14 @@ function openEdit(id){
   warrantyVal=isVoidedRepair?'voided':r.warranty;
   document.getElementById('rmTitle').textContent='Edit Repair - '+r.ticket;
   // Clear all fields
-  ['f-zdid','f-ordnum','f-serial','f-location','f-amztrack','f-issue','f-notes','f-repair-notes','f-location-cust','f-year','f-android','f-warranty-date'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
+  ['f-zdid','f-ordnum','f-serial','f-location','f-amztrack','f-issue','f-notes','f-repair-notes','f-location-cust','f-year','f-android','f-warranty-date','f-custname','f-custemail','f-custphone'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
+  var relBanner=document.getElementById('relatedTicketBanner');if(relBanner)relBanner.classList.add('hidden');
   // Populate year dropdown first
   populateYearDropdown();
   // Fill fields
   var setV=function(id,v){var el=document.getElementById(id);if(el&&v!==undefined&&v!==null)el.value=v;};
   setV('f-zdid',r.zdid);setV('f-ordnum',r.ordnum);setV('f-serial',r.serial);
+  setV('f-custname',r.custName);setV('f-custemail',r.custEmail);setV('f-custphone',r.custPhone);
   // Parse metadata from notes field
   var _yr=r.year||'';
   var _and=r.android||'';
@@ -2191,6 +2390,9 @@ async function saveRepair(){
         d.ordnum=document.getElementById('f-ordnum').value.trim();
         var sc2=document.getElementById('f-size-cust');d.size=sc2?sc2.value:'';
         var lc2=document.getElementById('f-location-cust');d.location=lc2?lc2.value.trim():'';
+        d.custName=(document.getElementById('f-custname')||{value:''}).value.trim();
+        d.custEmail=(document.getElementById('f-custemail')||{value:''}).value.trim();
+        d.custPhone=(document.getElementById('f-custphone')||{value:''}).value.trim();
       } else {
         d.serial=document.getElementById('f-serial').value.trim();
         d.size=document.getElementById('f-size').value;
@@ -2222,6 +2424,10 @@ async function saveRepair(){
         size:t==='customer'?custSize:document.getElementById('f-size').value,
         location:t==='customer'?custLoc:document.getElementById('f-location').value.trim(),
         amztrack:t==='amazon'?document.getElementById('f-amztrack').value.trim():'',
+        custName:t==='customer'?(document.getElementById('f-custname')||{value:''}).value.trim():'',
+        custEmail:t==='customer'?(document.getElementById('f-custemail')||{value:''}).value.trim():'',
+        custPhone:t==='customer'?(document.getElementById('f-custphone')||{value:''}).value.trim():'',
+        relatedTo:t==='customer'?pendingRelatedTo:null,
         issue:issue,status:document.getElementById('f-status').value,
         assigned:assignedVal,warranty:t==='customer'?(warrantyVal==='voided'?false:warrantyVal):null,
         outcome:'',
@@ -2349,6 +2555,23 @@ async function refreshTrackingStatus(id){
   if(btn){btn.disabled=false;btn.textContent='Refresh Status';}
 }
 
+function renderRelatedTickets(r){
+  var sec=document.getElementById('d-related-sec');
+  var body=document.getElementById('d-related-body');
+  if(!r){sec.classList.add('hidden');return;}
+  var rows=[];
+  if(r.relatedTo){
+    var prev=_repairs.find(function(x){return x.id===r.relatedTo;});
+    if(prev)rows.push('<div class="det-field"><label>Previous repair</label><span><a href="#" onclick="event.preventDefault();closeDetail();openDetail(\''+prev.id+'\')" style="color:var(--accent)">'+prev.ticket+'</a> ('+prev.status+', '+fmt(prev.createdAt)+')</span></div>');
+  }
+  var followUps=_repairs.filter(function(x){return x.relatedTo===r.id;});
+  followUps.forEach(function(f){
+    rows.push('<div class="det-field"><label>Follow-up repair</label><span><a href="#" onclick="event.preventDefault();closeDetail();openDetail(\''+f.id+'\')" style="color:var(--accent)">'+f.ticket+'</a> ('+f.status+', '+fmt(f.createdAt)+')</span></div>');
+  });
+  if(!rows.length){sec.classList.add('hidden');return;}
+  sec.classList.remove('hidden');
+  body.innerHTML='<div class="det-grid">'+rows.join('')+'</div>';
+}
 function renderTrackingSection(r){
   var sec=document.getElementById('d-tracking-sec');
   var body=document.getElementById('d-tracking-body');
@@ -3041,11 +3264,12 @@ initApp();
   // Default new repair type based on real customer-manage permission
   window.openNewRepair = function(){
     if(isSupportMode) return;
-    editingId=null; warrantyVal=null; outcomeVal='';
+    editingId=null; warrantyVal=null; outcomeVal=''; pendingRelatedTo=null;
     document.getElementById('rmTitle').textContent='New Repair';
-    ['f-zdid','f-ordnum','f-serial','f-location','f-amztrack','f-issue','f-notes','f-repair-notes','f-location-cust','f-year','f-android','f-warranty-date'].forEach(function(id){
+    ['f-zdid','f-ordnum','f-serial','f-location','f-amztrack','f-issue','f-notes','f-repair-notes','f-location-cust','f-year','f-android','f-warranty-date','f-custname','f-custemail','f-custphone'].forEach(function(id){
       var el=document.getElementById(id); if(el) el.value='';
     });
+    var relBanner=document.getElementById('relatedTicketBanner'); if(relBanner) relBanner.classList.add('hidden');
     var assignedTo=document.getElementById('f-assigned-to'); if(assignedTo) assignedTo.value='';
     var fsize=document.getElementById('f-size'); if(fsize) fsize.value='';
     var fsizec=document.getElementById('f-size-cust'); if(fsizec) fsizec.value='';

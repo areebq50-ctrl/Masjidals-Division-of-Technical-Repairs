@@ -41,7 +41,38 @@ behavior in place rather than silently changing it, since I can't be sure
 which behavior you actually want — let me know if view-only techs should be
 blocked from deleting customer tickets and I'll add it back.
 
-## What changed
+## What changed (latest batch)
+
+- **Follow-up/linked tickets.** When creating a customer repair, if the
+  Zendesk ID or Order Number entered matches an existing ticket, a banner
+  shows the previous ticket(s) and the new one is automatically linked as a
+  follow-up (`relatedTo`) instead of you having to edit the original. The
+  ticket detail view shows both directions - "Previous repair" and any
+  "Follow-up repair" - as clickable links.
+- **Customer contact fields** (name/email/phone) added to customer repairs,
+  optional, shown in the detail view. Groundwork for any future
+  customer-facing notifications.
+- **"Look up customer" button** on the New Repair form pulls name/email/phone
+  from Zendesk (by ticket ID) and/or Shopify (by order number) into those new
+  fields - you review and it fills in, never auto-saves silently. Needs
+  `ZENDESK_*`/`SHOPIFY_*` env vars (see below) - does nothing until then.
+  Read-only: it never writes anything back to Zendesk or Shopify.
+- **Numeric PIN keypad** on the login screen - faster to tap on a shop-floor
+  phone/tablet than the native keyboard. Physical keyboard typing still works.
+- **Delivered vs Awaiting Delivery filter** on Completed Repairs, using the
+  tracking status from the live-tracking feature.
+- **Export CSV** button on Completed Repairs - downloads every repair record
+  (all types/statuses) as a CSV that opens directly in Excel/Sheets.
+- **Ask AI page** (Settings sidebar, admin-only) - ask natural-language
+  questions about your repair data ("how many devices have a cracked
+  screen", "which device size has the most issues", "android 6 vs 11
+  breakdown") and get an answer plus, for breakdown-style questions, a table
+  with its own CSV export. Backed by Gemini - needs `GEMINI_API_KEY` (see
+  below), otherwise the page just explains it isn't configured yet. Only a
+  trimmed, PII-free snapshot of repair data (no Zendesk ID/order
+  number/serial/customer contact info) is sent to Gemini per question.
+
+## What changed (earlier batch)
 
 - **Waqas removed** from the "ZD Assigned To" dropdown in the New/Edit Repair
   form. Existing tickets already assigned to Waqas are untouched — the value
@@ -89,8 +120,10 @@ functions.
    needed.
 4. Under **Site settings → Environment variables**, add whichever of these
    you want (all optional — see `.env.example` for details):
-   - `AFTERSHIP_API_KEY`
-   - `AFTERSHIP_WEBHOOK_SECRET`
+   - `AFTERSHIP_API_KEY`, `AFTERSHIP_WEBHOOK_SECRET` — live package tracking
+   - `GEMINI_API_KEY`, `GEMINI_MODEL` — Ask AI
+   - `ZENDESK_SUBDOMAIN`, `ZENDESK_EMAIL`, `ZENDESK_API_TOKEN` — customer lookup
+   - `SHOPIFY_STORE_DOMAIN`, `SHOPIFY_ADMIN_TOKEN` — customer lookup
 5. Click **Deploy site**.
 6. If this is a new site (not your existing one), point your custom domain
    at it under **Domain settings**, then retire the old site once you've
@@ -125,15 +158,45 @@ Function](https://docs.netlify.com/functions/scheduled-functions/), declared
 in `netlify.toml`. This is included on Netlify's free tier — no paid plan
 required. It's also reachable manually at `/api/track-cron` for testing.
 
+## 3. Turn on Ask AI (optional)
+
+1. Go to [aistudio.google.com](https://aistudio.google.com) → **Get API
+   key** → create a key (free tier is generous for this volume of use).
+2. In Netlify: Site settings → Environment variables → add `GEMINI_API_KEY`
+   → redeploy.
+3. That's it — the "Ask AI" page (visible to admins in the sidebar) starts
+   answering questions. `GEMINI_MODEL` is optional if you want a different
+   model than the default (`gemini-2.0-flash`).
+
+## 4. Turn on Zendesk/Shopify customer lookup (optional)
+
+**Zendesk:**
+1. Zendesk Admin Center → Apps and integrations → APIs → Zendesk API →
+   enable token access → add API token.
+2. In Netlify, add `ZENDESK_SUBDOMAIN` (the part before `.zendesk.com` in
+   your Zendesk URL), `ZENDESK_EMAIL` (the email of the account that
+   generated the token), and `ZENDESK_API_TOKEN`.
+
+**Shopify:**
+1. Shopify Admin → Settings → Apps and sales channels → Develop apps →
+   Create an app → Configure Admin API scopes → grant `read_orders` only →
+   Install app → copy the Admin API access token (shown once).
+2. In Netlify, add `SHOPIFY_STORE_DOMAIN` (e.g. `masjidal.myshopify.com`)
+   and `SHOPIFY_ADMIN_TOKEN`.
+
+Either one works independently — set up just Zendesk, just Shopify, or both.
+See the top of this document for what this feature does and its limitations
+(exact-match lookup only, read-only, no continuous sync).
+
 ## Ideas for later (not built yet, happy to add any of these)
 
-- **Customer-facing tracking link/email**: text or email the customer their
-  tracking link automatically when the ticket closes with a shipped outcome.
-  Needs an email/SMS provider (Postmark, Resend, Twilio) and their contact
-  info captured somewhere in the ticket — currently the app doesn't collect
-  customer email/phone at all.
-- **Delivered filter** on Completed Repairs (e.g. "Awaiting Delivery" vs
-  "Delivered") now that delivery status is tracked.
+- **Customer-facing tracking link/email**: now that customer email/phone is
+  captured on the ticket, text or email them their tracking link
+  automatically when the ticket closes with a shipped outcome. Needs an
+  email/SMS provider (Postmark, Resend, Twilio).
+- **Push repair status updates to Zendesk** as an internal note when a
+  ticket's status changes (the "push" half of the Zendesk integration -
+  only the "pull" half is built so far).
 - **Dashboard stat card** for "Packages In Transit" count.
 - Move the hardcoded Supabase anon key out of `index.html` into a build-time
   injected value — low priority since it's already public-by-design for a
