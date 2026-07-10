@@ -5,6 +5,42 @@ tracking on Netlify. Nothing here touches your Supabase data or schema — the
 `repairs` table already has the `tracking` column the app has always written
 to; the tracking feature just stores a richer JSON object in that same field.
 
+## ⚠️ Action required: run `supabase/security.sql`
+
+This update fixes a real security issue and **needs one manual step from you
+to fully take effect**. Previously, every employee's PIN was sent to the
+browser in plaintext before login (visible in dev tools network tab to
+anyone who loaded the page), and the login page itself hardcoded a default
+admin PIN (`7346`) in the public source. The app code is fixed, but closing
+the hole completely requires a database-level change I can't make for you:
+
+1. Open your Supabase project → **SQL Editor** → **New query**.
+2. Paste in the contents of `supabase/security.sql` from this repo and run it.
+3. Log in as an admin → **Settings → Employees → Edit "Areeb Qureshi"** → set
+   a new PIN, in case the account still uses the old hardcoded `7346`.
+
+Until step 2 is done, the app itself no longer displays or transmits PINs
+in normal use, but the `pin` column is still technically readable by anyone
+who queries the Supabase REST API directly with the public anon key — the
+SQL script is what actually closes that off. See the comments in
+`supabase/security.sql` for exactly what it does and why.
+
+### Also worth knowing: a permissions cleanup
+
+The three functions that gate editing/closing/deleting tickets
+(`canEdit`, `canCloseTicket`, `canDeleteTicket`) had each been redefined
+2–3 times across the file from iterative patches, with later versions
+silently overriding earlier ones. I consolidated each into a single
+definition, preserving whatever was actually active in production (the
+last-defined version), not necessarily the original. One thing I noticed in
+the process: view-only techs currently **can** delete a customer ticket they
+created — an earlier patch had blocked this, but a later patch (adding
+delete rules for "general" employees) was based on an older copy of the
+function and silently dropped that restriction. I left the currently-active
+behavior in place rather than silently changing it, since I can't be sure
+which behavior you actually want — let me know if view-only techs should be
+blocked from deleting customer tickets and I'll add it back.
+
 ## What changed
 
 - **Waqas removed** from the "ZD Assigned To" dropdown in the New/Edit Repair

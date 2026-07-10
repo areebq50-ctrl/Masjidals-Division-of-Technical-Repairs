@@ -842,6 +842,16 @@ async function sbDel(table, id) {
   var r=await fetch(SB_URL+'/rest/v1/'+table+'?id=eq.'+encodeURIComponent(id),{method:'DELETE',headers:sbH(false)});
   if(!r.ok) throw new Error('DELETE '+table+' '+r.status);
 }
+// Calls a Postgres RPC (used for PIN verification, so the pin column itself
+// never has to be selected/sent to the browser - see verify_employee_pin in
+// supabase/security.sql).
+async function sbRpc(fn, args) {
+  var r=await fetch(SB_URL+'/rest/v1/rpc/'+fn,{method:'POST',headers:sbH(false),body:JSON.stringify(args||{})});
+  if(!r.ok){var t=await r.text();throw new Error('RPC '+fn+' '+r.status+': '+t.substring(0,150));}
+  var txt=await r.text();
+  if(!txt) return [];
+  var d=JSON.parse(txt); return Array.isArray(d)?d:[d];
+}
 async function getCounter() {
   var rows=await sbGet('meta','id=eq.counter');
   var n=(rows.length?rows[0].value:1000)+1;
@@ -864,7 +874,7 @@ async function doLoad(){
   try{
     var results=await Promise.all([
       sbGet('repairs','order=createdAt.desc&limit=500'),
-      sbGet('employees')
+      sbGet('employees_public')
     ]);
     _repairs=results[0];
     _employees=results[1];
@@ -949,7 +959,7 @@ function canSeeRep(r){
 }
 function canEdit(r){
   if(isSupportMode)return false;
-  var e=getEmp(currentUser);if(!e)return false;
+  var e=getEmp(currentUser);if(!e||!r)return false;
   if(e.role==='admin'||e.role==='general')return true;
   if(e.role==='tech'){
     if(r.type==='customer')return !!e.seeCustomer&&!e.viewOnlyCustomer;
@@ -959,7 +969,7 @@ function canEdit(r){
 }
 function canCloseTicket(r){
   if(isSupportMode)return false;
-  var e=getEmp(currentUser);if(!e)return false;
+  var e=getEmp(currentUser);if(!e||!r)return false;
   if(e.role==='admin'||e.role==='general')return true;
   if(e.role==='tech'){
     if(r.type==='customer')return !!e.seeCustomer&&!e.viewOnlyCustomer;
@@ -967,10 +977,17 @@ function canCloseTicket(r){
   }
   return false;
 }
+// General employees can delete all non-customer tickets, and only their own
+// customer tickets. Admin can delete all. Others (tech) can delete only
+// tickets they created.
 function canDeleteTicket(r){
   if(isSupportMode)return false;
   var e=getEmp(currentUser);if(!e||!r)return false;
   if(e.role==='admin')return true;
+  if(e.role==='general'){
+    if(r.type!=='customer')return true;
+    return r.createdBy===currentUser;
+  }
   return r.createdBy===currentUser;
 }
 
@@ -1064,19 +1081,30 @@ function renderUserCards(){
   }).join('');
 }
 function selectEmp(id){selectedEmpId=id;renderUserCards();document.getElementById('pinInput').focus();}
-function doLogin(){
+async function doLogin(){
   var pin=document.getElementById('pinInput').value;
   var err=document.getElementById('loginErr');
   if(!selectedEmpId){err.textContent='Please select an account.';err.style.display='block';return;}
-  var emp=_employees.find(function(e){return e.id===selectedEmpId;});
-  if(emp&&emp.pin===pin){
-    isSupportMode=false;
-    currentUser=emp.id;err.style.display='none';
-    document.getElementById('loginScreen').style.display='none';
-    document.getElementById('app').style.cssText='display:flex;width:100%;min-height:100vh;';
-    showGlobalSearch(); // Show global search bar
-    setupApp();startPolling();showPage('dashboard');
-  }else{err.textContent='Incorrect PIN. Try again.';err.style.display='block';document.getElementById('pinInput').value='';}
+  var btn=document.getElementById('loginBtn');
+  if(btn)btn.disabled=true;
+  try{
+    // PIN is verified server-side via a Postgres RPC (verify_employee_pin) so
+    // it never has to be fetched/compared in the browser - see supabase/security.sql.
+    var rows=await sbRpc('verify_employee_pin',{p_employee_id:selectedEmpId,p_pin:pin});
+    var emp=rows&&rows[0];
+    if(emp){
+      isSupportMode=false;
+      currentUser=emp.id;err.style.display='none';
+      document.getElementById('loginScreen').style.display='none';
+      document.getElementById('app').style.cssText='display:flex;width:100%;min-height:100vh;';
+      showGlobalSearch(); // Show global search bar
+      setupApp();startPolling();showPage('dashboard');
+    }else{err.textContent='Incorrect PIN. Try again.';err.style.display='block';document.getElementById('pinInput').value='';}
+  }catch(e){
+    console.error(e);
+    err.textContent='Could not verify PIN. Check your connection and try again.';err.style.display='block';
+  }
+  if(btn)btn.disabled=false;
 }
 function doSupportLogin(){
   isSupportMode=true;currentUser=null;
@@ -2412,7 +2440,7 @@ function renderStats(){
 
 function renderEmployees(){
   document.getElementById('empCards').innerHTML=_employees.map(function(e,idx){
-    return'<div class="emp-card" data-eid="'+e.id+'" data-order="'+idx+'" draggable="true"><div class="tav" style="width:40px;height:40px;font-size:14px;background:'+e.color+';color:'+e.textColor+'">'+e.initials+'</div><div class="emp-info"><strong>'+e.name+(e.id==='areeb'?' <span class="role-tag rt-admin">Owner</span>':'')+'</strong><span><span class="role-tag '+(e.role==='admin'?'rt-admin':'rt-tech')+'">'+(e.role==='admin'?'Admin':'Tech')+'</span>'+(e.role!=='admin'?' - Customer: '+(e.seeCustomer&&!e.viewOnlyCustomer?'Full access':(e.viewOnlyCustomer?'View only':'Hidden')):'')+'</span><span style="font-size:11px;color:var(--text3);margin-top:2px;display:block">PIN: '+e.pin+'</span></div><div class="emp-acts" draggable="false">'+(e.id!=='areeb'?'<button class="btn btn-ghost btn-sm" onclick="openEditEmp(_peid(this))" draggable="false">Edit</button><button class="btn btn-danger btn-sm" onclick="delEmp(_peid(this))" draggable="false">Remove</button>':'')+'</div></div>';
+    return'<div class="emp-card" data-eid="'+e.id+'" data-order="'+idx+'" draggable="true"><div class="tav" style="width:40px;height:40px;font-size:14px;background:'+e.color+';color:'+e.textColor+'">'+e.initials+'</div><div class="emp-info"><strong>'+e.name+(e.id==='areeb'?' <span class="role-tag rt-admin">Owner</span>':'')+'</strong><span><span class="role-tag '+(e.role==='admin'?'rt-admin':'rt-tech')+'">'+(e.role==='admin'?'Admin':'Tech')+'</span>'+(e.role!=='admin'?' - Customer: '+(e.seeCustomer&&!e.viewOnlyCustomer?'Full access':(e.viewOnlyCustomer?'View only':'Hidden')):'')+'</span><span style="font-size:11px;color:var(--text3);margin-top:2px;display:block">PIN set - use Edit to reset</span></div><div class="emp-acts" draggable="false">'+(e.id!=='areeb'?'<button class="btn btn-ghost btn-sm" onclick="openEditEmp(_peid(this))" draggable="false">Edit</button><button class="btn btn-danger btn-sm" onclick="delEmp(_peid(this))" draggable="false">Remove</button>':'')+'</div></div>';
   }).join('');
   // Add drag and drop handlers
   initEmployeeDragDrop();
@@ -2548,11 +2576,10 @@ async function saveEmp(){
       var newEmp={id:'emp'+Date.now(),name:name,pin:pin,role:role,seeCustomer:role==='admin'||role==='general'||seeCust,color:p[0],textColor:p[1],initials:initials,createdAt:new Date().toISOString()};
       targetId=newEmp.id;
       await sbPost('employees',newEmp);
-      _employees.push(newEmp);
     }
     setViewOnlyTech(targetId, role==='tech'&&viewOnly);
     closeEmpModal();
-    _employees=await sbGet('employees');
+    _employees=await sbGet('employees_public');
     applyViewOnlyFlags();
     renderEmployees();
     renderUserCards();
@@ -2599,11 +2626,13 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape')['repairModa
 async function initApp(){
   setLoading('Connecting to cloud...');
   try{
-    var emps=await sbGet('employees');
+    var emps=await sbGet('employees_public');
     if(!emps.length){
       setLoading('First time setup...');
-      await sbPost('employees',{id:'areeb',name:'Areeb Qureshi',pin:'7346',role:'admin',color:'#fef3c7',textColor:'#92400e',initials:'AQ',seeCustomer:true,createdAt:new Date().toISOString()});
-      emps=await sbGet('employees');
+      var seedPin=String(Math.floor(1000+Math.random()*9000));
+      await sbPost('employees',{id:'areeb',name:'Areeb Qureshi',pin:seedPin,role:'admin',color:'#fef3c7',textColor:'#92400e',initials:'AQ',seeCustomer:true,createdAt:new Date().toISOString()});
+      alert('First-time setup created admin account "Areeb Qureshi" with PIN: '+seedPin+'\n\nSave this now - it will not be shown again.');
+      emps=await sbGet('employees_public');
     }
     _employees=emps;
     document.getElementById('loadingScreen').style.display='none';
@@ -2670,26 +2699,6 @@ initApp();
     if(e.role==='admin' || e.role==='general') return true;
     if(e.role==='tech' && r.type==='customer') return !!e.seeCustomer || !!e.viewOnlyCustomer;
     return true;
-  };
-  window.canEdit = function(r){
-    if(isSupportMode) return false;
-    var e=getEmp(currentUser); if(!e || !r) return false;
-    if(e.role==='admin' || e.role==='general') return true;
-    if(e.role==='tech'){
-      if(r.type==='customer') return !!e.seeCustomer && !e.viewOnlyCustomer;
-      return true;
-    }
-    return false;
-  };
-  window.canCloseTicket = function(r){
-    if(isSupportMode) return false;
-    var e=getEmp(currentUser); if(!e || !r) return false;
-    if(e.role==='admin' || e.role==='general') return true;
-    if(e.role==='tech'){
-      if(r.type==='customer') return !!e.seeCustomer && !e.viewOnlyCustomer;
-      return true;
-    }
-    return false;
   };
 
   // Support login should load current repairs then show dashboard
@@ -2817,11 +2826,10 @@ initApp();
         var newEmp={id:'emp'+Date.now(),name:name,pin:pin,role:role,seeCustomer:role==='admin'||role==='general'||full||view,color:p[0],textColor:p[1],initials:initials,createdAt:new Date().toISOString()};
         targetId=newEmp.id;
         await sbPost('employees',newEmp);
-        _employees.push(newEmp);
       }
       setViewOnly(targetId, role==='tech' && view);
       closeEmpModal();
-      _employees=await sbGet('employees');
+      _employees=await sbGet('employees_public');
       // Re-apply saved order so login page and employee list stay in the right order
       try{
         var savedOrderIds = JSON.parse(localStorage.getItem('employeeOrder')||'[]');
@@ -2896,33 +2904,6 @@ initApp();
     if(e.role==='tech' && r.type==='customer') return !!e.seeCustomer || !!e.viewOnlyCustomer;
     return true;
   };
-  window.canEdit = function(r){
-    if(isSupportMode) return false;
-    var e=getEmp(currentUser); if(!e || !r) return false;
-    if(e.role==='admin' || e.role==='general') return true;
-    if(e.role==='tech'){
-      if(r.type==='customer') return false === !!e.viewOnlyCustomer && !!e.seeCustomer;
-      return true;
-    }
-    return false;
-  };
-  window.canCloseTicket = function(r){
-    if(isSupportMode) return false;
-    var e=getEmp(currentUser); if(!e || !r) return false;
-    if(e.role==='admin' || e.role==='general') return true;
-    if(e.role==='tech'){
-      if(r.type==='customer') return false === !!e.viewOnlyCustomer && !!e.seeCustomer;
-      return true;
-    }
-    return false;
-  };
-  window.canDeleteTicket = function(r){
-    if(isSupportMode) return false;
-    var e=getEmp(currentUser); if(!e || !r) return false;
-    if(e.role==='admin') return true;
-    if(e.role==='tech' && r.type==='customer' && e.viewOnlyCustomer) return false;
-    return r.createdBy===currentUser;
-  };
   var _origSetRTypeLock = window.setRType;
   window.setRType = function(type){
     var e=getEmp(currentUser);
@@ -2990,26 +2971,6 @@ initApp();
       return true;
     }
     return true;
-  };
-  window.canEdit = function(r){
-    if(isSupportMode) return false;
-    var e=getEmp(currentUser); if(!e || !r) return false;
-    if(e.role==='admin' || e.role==='general') return true;
-    if(e.role==='tech'){
-      if(r.type==='customer') return !!e.seeCustomer && !e.viewOnlyCustomer;
-      return true;
-    }
-    return false;
-  };
-  window.canCloseTicket = function(r){
-    if(isSupportMode) return false;
-    var e=getEmp(currentUser); if(!e || !r) return false;
-    if(e.role==='admin' || e.role==='general') return true;
-    if(e.role==='tech'){
-      if(r.type==='customer') return !!e.seeCustomer && !e.viewOnlyCustomer;
-      return true;
-    }
-    return false;
   };
 
   // Hide customer type unless tech has full customer access
@@ -3235,20 +3196,6 @@ initApp();
     var creator = actualCreator(r);
     return !!(r && r.type==='customer' && creator && creator.role==='general');
   }
-
-  // General employees can delete all non-customer tickets, and only their own customer tickets.
-  // Admin can delete all. Others keep existing own-ticket behavior.
-  window.canDeleteTicket = function(r){
-    if(isSupportMode) return false;
-    var e = getEmp(currentUser);
-    if(!e || !r) return false;
-    if(e.role==='admin') return true;
-    if(e.role==='general'){
-      if(r.type!=='customer') return true;
-      return r.createdBy===currentUser;
-    }
-    return r.createdBy===currentUser;
-  };
 
   // Dashboard cards: show display creator, not actual general creator on customer repairs.
   window.dashCard = function(r){
