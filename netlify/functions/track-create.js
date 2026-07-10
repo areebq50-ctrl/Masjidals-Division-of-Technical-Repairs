@@ -1,9 +1,12 @@
 // POST /api/track-create -> /.netlify/functions/track-create (see netlify.toml redirect)
-// Body: { repairId, carrier, number, notes } — registers a shipment with
-// AfterShip (if configured) and stores the result on the repair's `tracking`
-// column. With no AFTERSHIP_API_KEY set, this just no-ops and the manual
+// Body: { repairId, carrier, number, notes } — registers a shipment for live
+// tracking and stores the result on the repair's `tracking` column.
+// Prefers UPS's own free Tracking API when the carrier is UPS and
+// UPS_CLIENT_ID/UPS_CLIENT_SECRET are set (no paid plan needed). Falls back
+// to AfterShip (AFTERSHIP_API_KEY) for other carriers, or if UPS isn't
+// configured. With neither configured, this just no-ops and the manual
 // tracking info already saved by the client stays exactly as-is.
-const { sbPatch, CARRIER_SLUGS, mapStatus, json } = require('./utils/shared');
+const { sbPatch, CARRIER_SLUGS, mapStatus, trackUpsDirect, json } = require('./utils/shared');
 
 exports.handler = async function (event) {
   if (event.httpMethod !== 'POST') return json(405, { error: 'Method not allowed' });
@@ -20,6 +23,27 @@ exports.handler = async function (event) {
       checkpoints: [], slug: null, registered: false
     };
 
+    // Preferred path: UPS direct (free).
+    if (carrier === 'UPS') {
+      var upsResult = await trackUpsDirect(number).catch(function (e) { console.error('UPS direct failed', e); return null; });
+      if (upsResult) {
+        var updatedUps = Object.assign({}, base, {
+          slug: 'ups-direct',
+          status: upsResult.statusTag,
+          statusText: upsResult.statusText,
+          statusColor: upsResult.statusColor,
+          expectedDelivery: upsResult.expectedDelivery,
+          lastCheckedAt: new Date().toISOString(),
+          checkpoints: (upsResult.checkpoints || []).slice(-10).reverse(),
+          registered: true,
+          deliveredAt: upsResult.statusTag === 'Delivered' ? new Date().toISOString() : null
+        });
+        await sbPatch('repairs', repairId, { tracking: JSON.stringify(updatedUps), updatedAt: new Date().toISOString() });
+        return json(200, { ok: true, registered: true, tracking: updatedUps });
+      }
+    }
+
+    // Fallback: AfterShip.
     var apiKey = process.env.AFTERSHIP_API_KEY;
     if (!apiKey) {
       await sbPatch('repairs', repairId, { tracking: JSON.stringify(base), updatedAt: new Date().toISOString() });

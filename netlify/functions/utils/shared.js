@@ -55,4 +55,72 @@ function json(statusCode, obj) {
   return { statusCode: statusCode, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(obj) };
 }
 
-module.exports = { sbGet, sbPatch, sbPost, CARRIER_SLUGS, STATUS_MAP, mapStatus, json, SUPABASE_URL, SUPABASE_KEY };
+// --- UPS direct tracking (free UPS Developer Kit API - no AfterShip needed) ---
+// OAuth2 client_credentials token. Fetched fresh per request rather than
+// cached, since these are short-lived serverless invocations - simpler and
+// still well within UPS's rate limits for this shop's volume.
+async function getUpsToken() {
+  var id = process.env.UPS_CLIENT_ID, secret = process.env.UPS_CLIENT_SECRET;
+  if (!id || !secret) return null;
+  var auth = Buffer.from(id + ':' + secret).toString('base64');
+  var r = await fetch('https://onlinetools.ups.com/security/v1/oauth/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Authorization: 'Basic ' + auth },
+    body: 'grant_type=client_credentials'
+  });
+  if (!r.ok) { console.error('UPS OAuth failed', r.status, await r.text()); return null; }
+  var data = await r.json();
+  return data.access_token || null;
+}
+
+const UPS_STATUS_MAP = {
+  D: { label: 'Delivered', color: 'green' },
+  I: { label: 'In Transit', color: 'blue' },
+  M: { label: 'Label Created', color: 'yellow' },
+  P: { label: 'Picked Up', color: 'blue' },
+  X: { label: 'Exception', color: 'red' }
+};
+
+// Returns the same normalized shape the AfterShip path uses
+// ({statusTag, statusText, statusColor, expectedDelivery, checkpoints}) so
+// the rest of the app doesn't need to know which backend served it.
+async function trackUpsDirect(trackingNumber) {
+  var token = await getUpsToken();
+  if (!token) return null;
+  var r = await fetch('https://onlinetools.ups.com/api/track/v1/details/' + encodeURIComponent(trackingNumber), {
+    headers: { Authorization: 'Bearer ' + token, transId: 'dtr-' + Date.now(), transactionSrc: 'MasjidalDTR' }
+  });
+  if (!r.ok) { console.error('UPS tracking lookup failed', r.status, await r.text()); return null; }
+  var data = await r.json();
+  var shipment = data.trackResponse && data.trackResponse.shipment && data.trackResponse.shipment[0];
+  var pkg = shipment && shipment.package && shipment.package[0];
+  if (!pkg) return null;
+
+  var cur = pkg.currentStatus || {};
+  var mapped = UPS_STATUS_MAP[cur.type] || { label: cur.description || 'Unknown', color: 'blue' };
+
+  function toIso(dateStr, timeStr) {
+    if (!dateStr) return null;
+    var d = dateStr.substring(0, 4) + '-' + dateStr.substring(4, 6) + '-' + dateStr.substring(6, 8);
+    if (!timeStr) return d;
+    return d + 'T' + timeStr.substring(0, 2) + ':' + timeStr.substring(2, 4) + ':' + timeStr.substring(4, 6) + 'Z';
+  }
+
+  var checkpoints = (pkg.activity || []).map(function (a) {
+    var addr = a.location && a.location.address;
+    var loc = addr ? [addr.city, addr.stateProvince, addr.country].filter(Boolean).join(', ') : '';
+    return { message: (a.status && a.status.description) || '', city: loc, checkpoint_time: toIso(a.date, a.time) };
+  });
+
+  var deliveryDateRaw = pkg.deliveryDate && pkg.deliveryDate[0] && pkg.deliveryDate[0].date;
+
+  return {
+    statusTag: cur.type === 'D' ? 'Delivered' : mapped.label,
+    statusText: mapped.label,
+    statusColor: mapped.color,
+    expectedDelivery: toIso(deliveryDateRaw),
+    checkpoints: checkpoints
+  };
+}
+
+module.exports = { sbGet, sbPatch, sbPost, CARRIER_SLUGS, STATUS_MAP, mapStatus, json, trackUpsDirect, SUPABASE_URL, SUPABASE_KEY };

@@ -41,6 +41,27 @@ behavior in place rather than silently changing it, since I can't be sure
 which behavior you actually want — let me know if view-only techs should be
 blocked from deleting customer tickets and I'll add it back.
 
+### Also worth knowing: "view-only tech" is stored per-browser, not in the database
+
+The `employees` table has no `viewOnlyCustomer` column (confirmed by running
+`information_schema.columns` against your actual database). The app stores
+that flag in **browser localStorage** instead (`setViewOnlyMap()` /
+`getViewOnlyMap()` in the code), keyed by employee ID. In practice this means:
+if an admin sets a tech to "view only" on one computer, that restriction
+**only applies on that specific browser** — logging in as that tech from a
+different computer, browser, or after clearing browser data, they'd get full
+access again, since there's no server-side record of the setting. Same for
+`security.sql`'s `verify_employee_pin` function - it can't return
+`viewOnlyCustomer` because there's nothing in Postgres to return.
+
+This isn't something I changed - it's how the feature already worked - but
+given "view only" is meant to be an access restriction, having it be
+per-browser rather than a real permission is worth knowing about. If you
+want this to actually be enforced everywhere consistently, it'd need a real
+`viewOnlyCustomer` boolean column added to `employees` and the client code
+switched to read/write it there instead of localStorage - a small, safe
+change I can make whenever you want it.
+
 ## What changed (latest batch)
 
 - **Follow-up/linked tickets.** When creating a customer repair, if the
@@ -136,20 +157,29 @@ so you keep your existing domain and don't have to redo DNS.
 
 ## 2. Turn on live package tracking (optional)
 
-1. Create a free account at [aftership.com](https://www.aftership.com).
-2. In the AfterShip dashboard: **Settings → API Keys** → create a key.
-3. In Netlify: Site settings → Environment variables → add
-   `AFTERSHIP_API_KEY` with that value → redeploy (Deploys → Trigger deploy).
-4. That alone gets you: automatic registration on save, live status in the
-   ticket detail view, and the daily scheduled-function fallback sweep.
-5. For near-instant updates instead of waiting for the daily sweep: in
-   AfterShip, go to **Settings → Webhooks**, add
-   `https://<your-netlify-domain>/api/track-webhook`, subscribe to the
-   "tracking update" event, and copy the signing secret into Netlify as
-   `AFTERSHIP_WEBHOOK_SECRET`.
-6. AfterShip's free plan covers a generous number of tracked shipments/month
-   for a shop this size; if you outgrow it, TrackingMore, Shippo, and
-   EasyPost all offer a very similar API shape if you'd rather switch later.
+Since you ship exclusively with UPS, the tracking feature prefers UPS's own
+free Tracking API — no AfterShip account or paid plan needed:
+
+1. Go to [developer.ups.com](https://developer.ups.com) → sign up/log in →
+   **Create an app**. Add the **Tracking API** product to it.
+2. Copy the app's **Client ID** and **Client Secret**.
+3. In Netlify: Site settings → Environment variables → add `UPS_CLIENT_ID`
+   and `UPS_CLIENT_SECRET` → redeploy (Deploys → Trigger deploy).
+4. That's it — saving a UPS tracking number now automatically looks up
+   status via UPS directly, shown in the ticket detail view, refreshed by
+   the "Refresh Status" button and the daily scheduled sweep.
+
+**Limitation to know about**: UPS's free API doesn't offer an easy webhook
+for real-time push updates (that requires UPS's separate Quantum View
+enterprise product), so UPS-tracked shipments only update when someone
+clicks "Refresh Status" or when the daily sweep runs (once/day) — not
+instantly the moment UPS's system updates. For a repair shop's volume this
+is normally fine; say the word if you want tighter timing later.
+
+If you ever also want AfterShip as a fallback for other carriers, the code
+already supports it: set `AFTERSHIP_API_KEY`, and optionally
+`AFTERSHIP_WEBHOOK_SECRET` for near-real-time updates on those. Not required
+for UPS.
 
 ### Scheduled function note
 

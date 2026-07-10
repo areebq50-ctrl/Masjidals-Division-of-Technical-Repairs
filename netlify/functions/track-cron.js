@@ -1,13 +1,15 @@
 // Scheduled Netlify Function (see netlify.toml "schedule") — runs daily.
-// Re-checks every repair with an active (non-delivered) live tracking record,
-// in case the AfterShip webhook was missed or never configured. This is what
-// guarantees a shipment keeps getting checked all the way until it's marked
-// Delivered. Also reachable manually at /api/track-cron for testing.
-const { sbGet, sbPatch, sbPost, mapStatus, json } = require('./utils/shared');
+// Re-checks every repair with an active (non-delivered) live tracking record
+// - UPS direct for tracking.slug === 'ups-direct', AfterShip otherwise - in
+// case a webhook was missed or never configured. This is what guarantees a
+// shipment keeps getting checked all the way until it's marked Delivered.
+// Also reachable manually at /api/track-cron for testing.
+const { sbGet, sbPatch, sbPost, mapStatus, trackUpsDirect, json } = require('./utils/shared');
 
 exports.handler = async function () {
-  var apiKey = process.env.AFTERSHIP_API_KEY;
-  if (!apiKey) return json(200, { ok: true, skipped: 'Live tracking not configured yet' });
+  var hasUps = !!(process.env.UPS_CLIENT_ID && process.env.UPS_CLIENT_SECRET);
+  var hasAfterShip = !!process.env.AFTERSHIP_API_KEY;
+  if (!hasUps && !hasAfterShip) return json(200, { ok: true, skipped: 'Live tracking not configured yet' });
 
   try {
     var repairs = await sbGet('repairs', 'order=updatedAt.desc&limit=1000');
@@ -22,33 +24,51 @@ exports.handler = async function () {
     for (var i = 0; i < candidates.length; i++) {
       var r = candidates[i];
       var tr = typeof r.tracking === 'string' ? JSON.parse(r.tracking) : r.tracking;
+      var wasDelivered = tr.status === 'Delivered';
       try {
-        var resp = await fetch('https://api.aftership.com/v4/trackings/' + tr.slug + '/' + encodeURIComponent(tr.number), {
-          headers: { 'aftership-api-key': apiKey }
-        });
-        var data = await resp.json();
-        if (!resp.ok) { results.push({ id: r.id, error: (data.meta || {}).message }); continue; }
+        var updated;
 
-        var t = (data.data && data.data.tracking) || {};
-        var mapped = mapStatus(t.tag);
-        var wasDelivered = tr.status === 'Delivered';
-        var updated = Object.assign({}, tr, {
-          status: t.tag || tr.status,
-          statusText: mapped.label,
-          statusColor: mapped.color,
-          expectedDelivery: t.expected_delivery || tr.expectedDelivery,
-          lastCheckedAt: new Date().toISOString(),
-          checkpoints: (t.checkpoints || []).slice(-10).reverse(),
-          deliveredAt: t.tag === 'Delivered' ? (tr.deliveredAt || new Date().toISOString()) : tr.deliveredAt
-        });
+        if (tr.slug === 'ups-direct') {
+          if (!hasUps) { results.push({ id: r.id, skipped: 'UPS not configured' }); continue; }
+          var upsResult = await trackUpsDirect(tr.number);
+          if (!upsResult) { results.push({ id: r.id, error: 'UPS lookup failed' }); continue; }
+          updated = Object.assign({}, tr, {
+            status: upsResult.statusTag,
+            statusText: upsResult.statusText,
+            statusColor: upsResult.statusColor,
+            expectedDelivery: upsResult.expectedDelivery || tr.expectedDelivery,
+            lastCheckedAt: new Date().toISOString(),
+            checkpoints: (upsResult.checkpoints || []).slice(-10).reverse(),
+            deliveredAt: upsResult.statusTag === 'Delivered' ? (tr.deliveredAt || new Date().toISOString()) : tr.deliveredAt
+          });
+        } else {
+          if (!hasAfterShip) { results.push({ id: r.id, skipped: 'AfterShip not configured' }); continue; }
+          var resp = await fetch('https://api.aftership.com/v4/trackings/' + tr.slug + '/' + encodeURIComponent(tr.number), {
+            headers: { 'aftership-api-key': process.env.AFTERSHIP_API_KEY }
+          });
+          var data = await resp.json();
+          if (!resp.ok) { results.push({ id: r.id, error: (data.meta || {}).message }); continue; }
+
+          var t = (data.data && data.data.tracking) || {};
+          var mapped = mapStatus(t.tag);
+          updated = Object.assign({}, tr, {
+            status: t.tag || tr.status,
+            statusText: mapped.label,
+            statusColor: mapped.color,
+            expectedDelivery: t.expected_delivery || tr.expectedDelivery,
+            lastCheckedAt: new Date().toISOString(),
+            checkpoints: (t.checkpoints || []).slice(-10).reverse(),
+            deliveredAt: t.tag === 'Delivered' ? (tr.deliveredAt || new Date().toISOString()) : tr.deliveredAt
+          });
+        }
 
         await sbPatch('repairs', r.id, { tracking: JSON.stringify(updated), updatedAt: new Date().toISOString() });
 
-        if (!wasDelivered && t.tag === 'Delivered') {
+        if (!wasDelivered && updated.status === 'Delivered') {
           await sbPost('activity', { ticket: r.ticket, msg: 'Package delivered (' + updated.carrier + ' ' + updated.number + ')', by: 'system', at: new Date().toISOString() });
         }
 
-        results.push({ id: r.id, status: t.tag });
+        results.push({ id: r.id, status: updated.status });
       } catch (e) {
         results.push({ id: r.id, error: String(e) });
       }

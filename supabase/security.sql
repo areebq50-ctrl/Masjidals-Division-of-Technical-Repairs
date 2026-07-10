@@ -14,13 +14,19 @@
 --
 -- Run this once in the Supabase SQL Editor (Project -> SQL Editor -> New
 -- query -> paste -> Run). Safe to re-run.
+--
+-- Note: an earlier version of this script referenced a "viewOnlyCustomer"
+-- column that doesn't exist in this database - that flag turns out to be
+-- stored in browser localStorage by the app, not in Postgres at all. Fixed
+-- below to match your actual employees columns (id, name, pin, role, color,
+-- textColor, initials, seeCustomer, createdAt, updatedAt).
 
 -- 1. A view of employees that omits `pin`. The app reads from this now
 --    instead of the base table.
 create or replace view public.employees_public as
   select
     id, name, role, color, "textColor", initials,
-    "seeCustomer", "viewOnlyCustomer", "createdAt", "updatedAt"
+    "seeCustomer", "createdAt", "updatedAt"
   from public.employees;
 
 grant select on public.employees_public to anon;
@@ -57,13 +63,13 @@ create policy "employees_delete_anon" on public.employees
 create or replace function public.verify_employee_pin(p_employee_id text, p_pin text)
 returns table (
   id text, name text, role text, color text, "textColor" text, initials text,
-  "seeCustomer" boolean, "viewOnlyCustomer" boolean
+  "seeCustomer" boolean
 )
 language sql
 security definer
 set search_path = public
 as $$
-  select id, name, role, color, "textColor", initials, "seeCustomer", "viewOnlyCustomer"
+  select id, name, role, color, "textColor", initials, "seeCustomer"
   from public.employees
   where id = p_employee_id and pin = p_pin;
 $$;
