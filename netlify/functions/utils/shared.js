@@ -1,5 +1,5 @@
-// Shared helpers for the /api serverless functions. Files prefixed with "_" are
-// not turned into routes by Vercel, so this stays a plain module.
+// Shared helpers for the Netlify Functions in ../*.js. Lives in a subfolder
+// so Netlify's function scanner doesn't try to turn it into its own endpoint.
 
 // Same Supabase project the client (index.html) already talks to directly.
 // Overridable via env vars if the key is ever rotated.
@@ -51,4 +51,8 @@ function mapStatus(tag) {
   return STATUS_MAP[tag] || { label: tag || 'Unknown', color: 'blue' };
 }
 
-module.exports = { sbGet, sbPatch, sbPost, CARRIER_SLUGS, STATUS_MAP, mapStatus, SUPABASE_URL, SUPABASE_KEY };
+function json(statusCode, obj) {
+  return { statusCode: statusCode, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(obj) };
+}
+
+module.exports = { sbGet, sbPatch, sbPost, CARRIER_SLUGS, STATUS_MAP, mapStatus, json, SUPABASE_URL, SUPABASE_KEY };

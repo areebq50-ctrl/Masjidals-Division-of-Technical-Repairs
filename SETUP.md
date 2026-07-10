@@ -1,10 +1,9 @@
-# Masjidal DTR — Setup & Migration Notes
+# Masjidal DTR — Setup Notes
 
-This covers what changed in this update, how to move the site from Netlify to
-Vercel, and how to turn on live package tracking. Nothing here touches your
-Supabase data or schema — the `repairs` table already has the `tracking`
-column the app has always written to; the tracking feature just stores a
-richer JSON object in that same field.
+This covers what changed in this update and how to turn on live package
+tracking on Netlify. Nothing here touches your Supabase data or schema — the
+`repairs` table already has the `tracking` column the app has always written
+to; the tracking feature just stores a richer JSON object in that same field.
 
 ## What changed
 
@@ -23,61 +22,72 @@ richer JSON object in that same field.
   Completed Repairs rows also show a small tracking pill so you can see
   delivery status at a glance without opening the ticket.
   - Status updates automatically two ways: an AfterShip webhook (near
-    real-time) and a daily cron job (fallback, in case the webhook is ever
-    missed). When a package is marked Delivered, an activity-log entry is
-    added automatically.
+    real-time) and a daily scheduled function (fallback, in case the webhook
+    is ever missed). When a package is marked Delivered, an activity-log
+    entry is added automatically.
   - **This is fully optional.** Until you add an `AFTERSHIP_API_KEY` (see
     below), everything works exactly like before — tracking numbers are
     stored manually with no live status, no errors, no broken UI.
+  - Implemented as **Netlify Functions** under `netlify/functions/`, so it
+    deploys on Netlify with no other infrastructure needed.
 - Minor polish: added a page favicon (reuses your existing logo) and a proper
   meta description. No layout, permissions, or workflow logic changed.
 
-## 1. Move from Netlify to Vercel
+## 1. Deploying this to Netlify
 
-1. Push this branch's PR to your default branch (or deploy the branch
-   directly from Vercel — see step 2).
-2. Go to [vercel.com](https://vercel.com) → **Add New… → Project** → import
-   `areebq50-ctrl/Masjidals-Division-of-Technical-Repairs` from GitHub.
-3. Framework Preset: **Other**. Build Command: leave empty. Output
-   Directory: leave default (root) — `index.html` is a static file, and the
-   `/api` folder is auto-detected as Serverless Functions. No build step is
+The GitHub repo (`areebq50-ctrl/Masjidals-Division-of-Technical-Repairs`) was
+empty before this change, so it's unlikely your current live site is
+git-connected to it yet. To get Functions (needed for live tracking) and the
+scheduled daily sweep working, connect the repo via Git rather than a manual
+drag-and-drop upload — drag-and-drop deploys don't reliably build serverless
+functions.
+
+1. In the Netlify dashboard, go to your existing DTR site (or **Add new site
+   → Import an existing project** if you want a fresh site).
+2. Choose **GitHub** → select
+   `areebq50-ctrl/Masjidals-Division-of-Technical-Repairs` → branch
+   `claude/masjidal-refactor-vercel-ag0h8q` (or your default branch, once
+   this is merged).
+3. Build settings: Netlify will read `netlify.toml` automatically — publish
+   directory `.`, functions directory `netlify/functions`. No build command
    needed.
-4. Under **Environment Variables**, add whichever of these you want (all
-   optional — see `.env.example` for details):
+4. Under **Site settings → Environment variables**, add whichever of these
+   you want (all optional — see `.env.example` for details):
    - `AFTERSHIP_API_KEY`
    - `AFTERSHIP_WEBHOOK_SECRET`
-   - `CRON_SECRET`
-5. Click **Deploy**. You'll get a `*.vercel.app` URL immediately.
-6. If you use a custom domain, add it under Project Settings → Domains, then
-   update the domain's DNS records at your registrar to point to Vercel
-   (Vercel shows you the exact records to add).
-7. Once Vercel is confirmed working, go to your Netlify site → Site settings
-   → and either **stop auto-publishing** or **delete the site** so the two
-   don't both try to serve traffic. If you moved a custom domain over, do
-   this only after DNS has fully cut over.
+5. Click **Deploy site**.
+6. If this is a new site (not your existing one), point your custom domain
+   at it under **Domain settings**, then retire the old site once you've
+   confirmed the new one works.
+
+If your current site is already connected to a different repo/branch, the
+simplest path is: point that existing site's Git integration at this repo
+and branch (Site settings → Build & deploy → Link a different repository),
+so you keep your existing domain and don't have to redo DNS.
 
 ## 2. Turn on live package tracking (optional)
 
 1. Create a free account at [aftership.com](https://www.aftership.com).
 2. In the AfterShip dashboard: **Settings → API Keys** → create a key.
-3. In Vercel: Project Settings → Environment Variables → add
-   `AFTERSHIP_API_KEY` with that value → redeploy.
+3. In Netlify: Site settings → Environment variables → add
+   `AFTERSHIP_API_KEY` with that value → redeploy (Deploys → Trigger deploy).
 4. That alone gets you: automatic registration on save, live status in the
-   ticket detail view, and the daily cron fallback sweep.
+   ticket detail view, and the daily scheduled-function fallback sweep.
 5. For near-instant updates instead of waiting for the daily sweep: in
    AfterShip, go to **Settings → Webhooks**, add
-   `https://<your-vercel-domain>/api/track-webhook`, subscribe to the
-   "tracking update" event, and copy the signing secret into Vercel as
+   `https://<your-netlify-domain>/api/track-webhook`, subscribe to the
+   "tracking update" event, and copy the signing secret into Netlify as
    `AFTERSHIP_WEBHOOK_SECRET`.
 6. AfterShip's free plan covers a generous number of tracked shipments/month
    for a shop this size; if you outgrow it, TrackingMore, Shippo, and
    EasyPost all offer a very similar API shape if you'd rather switch later.
 
-### Vercel Cron note
+### Scheduled function note
 
-The daily fallback sweep (`/api/track-cron`, 1pm UTC) uses a Vercel Cron Job
-(`vercel.json`). Vercel's free Hobby plan allows cron jobs to run once a day,
-which is what this is set to — no paid plan required.
+The daily fallback sweep (`track-cron`, 1pm UTC) is a [Netlify Scheduled
+Function](https://docs.netlify.com/functions/scheduled-functions/), declared
+in `netlify.toml`. This is included on Netlify's free tier — no paid plan
+required. It's also reachable manually at `/api/track-cron` for testing.
 
 ## Ideas for later (not built yet, happy to add any of these)
 

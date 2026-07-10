@@ -1,18 +1,13 @@
-// Daily fallback sweep (see vercel.json "crons"). Re-checks every repair with
-// an active (non-delivered) live tracking record, in case the AfterShip
-// webhook was missed or never configured. This is what guarantees a shipment
-// keeps getting checked all the way until it's marked Delivered.
-const { sbGet, sbPatch, sbPost, mapStatus } = require('./_shared');
+// Scheduled Netlify Function (see netlify.toml "schedule") — runs daily.
+// Re-checks every repair with an active (non-delivered) live tracking record,
+// in case the AfterShip webhook was missed or never configured. This is what
+// guarantees a shipment keeps getting checked all the way until it's marked
+// Delivered. Also reachable manually at /api/track-cron for testing.
+const { sbGet, sbPatch, sbPost, mapStatus, json } = require('./utils/shared');
 
-module.exports = async (req, res) => {
-  var cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    var auth = req.headers['authorization'];
-    if (auth !== 'Bearer ' + cronSecret) { res.status(401).json({ error: 'Unauthorized' }); return; }
-  }
-
+exports.handler = async function () {
   var apiKey = process.env.AFTERSHIP_API_KEY;
-  if (!apiKey) { res.status(200).json({ ok: true, skipped: 'Live tracking not configured yet' }); return; }
+  if (!apiKey) return json(200, { ok: true, skipped: 'Live tracking not configured yet' });
 
   try {
     var repairs = await sbGet('repairs', 'order=updatedAt.desc&limit=1000');
@@ -59,9 +54,9 @@ module.exports = async (req, res) => {
       }
     }
 
-    res.status(200).json({ ok: true, checked: candidates.length, results: results });
+    return json(200, { ok: true, checked: candidates.length, results: results });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ error: 'Cron refresh failed', detail: String(e) });
+    return json(500, { error: 'Cron refresh failed', detail: String(e) });
   }
 };

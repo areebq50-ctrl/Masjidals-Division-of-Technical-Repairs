@@ -1,30 +1,31 @@
-// POST { repairId } — on-demand refresh, used by the "Refresh Status" button
+// POST /api/track-refresh -> /.netlify/functions/track-refresh
+// Body: { repairId } — on-demand refresh, used by the "Refresh Status" button
 // in the ticket detail view. Looks up the latest status from AfterShip and
 // writes it back onto the repair's `tracking` column.
-const { sbGet, sbPatch, sbPost, mapStatus } = require('./_shared');
+const { sbGet, sbPatch, sbPost, mapStatus, json } = require('./utils/shared');
 
-module.exports = async (req, res) => {
-  if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return; }
+exports.handler = async function (event) {
+  if (event.httpMethod !== 'POST') return json(405, { error: 'Method not allowed' });
 
   try {
-    var repairId = (req.body || {}).repairId;
-    if (!repairId) { res.status(400).json({ error: 'repairId is required' }); return; }
+    var repairId = JSON.parse(event.body || '{}').repairId;
+    if (!repairId) return json(400, { error: 'repairId is required' });
 
     var apiKey = process.env.AFTERSHIP_API_KEY;
-    if (!apiKey) { res.status(200).json({ ok: true, registered: false, message: 'Live tracking not configured yet' }); return; }
+    if (!apiKey) return json(200, { ok: true, registered: false, message: 'Live tracking not configured yet' });
 
     var rows = await sbGet('repairs', 'id=eq.' + encodeURIComponent(repairId));
     var repair = rows[0];
-    if (!repair || !repair.tracking) { res.status(404).json({ error: 'No tracking on this repair' }); return; }
+    if (!repair || !repair.tracking) return json(404, { error: 'No tracking on this repair' });
 
     var tr = typeof repair.tracking === 'string' ? JSON.parse(repair.tracking) : repair.tracking;
-    if (!tr.slug) { res.status(200).json({ ok: true, registered: false, message: 'Not registered with AfterShip yet' }); return; }
+    if (!tr.slug) return json(200, { ok: true, registered: false, message: 'Not registered with AfterShip yet' });
 
     var r = await fetch('https://api.aftership.com/v4/trackings/' + tr.slug + '/' + encodeURIComponent(tr.number), {
       headers: { 'aftership-api-key': apiKey }
     });
     var data = await r.json();
-    if (!r.ok) { res.status(502).json({ error: 'AfterShip lookup failed', detail: (data.meta || {}).message }); return; }
+    if (!r.ok) return json(502, { error: 'AfterShip lookup failed', detail: (data.meta || {}).message });
 
     var t = (data.data && data.data.tracking) || {};
     var mapped = mapStatus(t.tag);
@@ -45,9 +46,9 @@ module.exports = async (req, res) => {
       await sbPost('activity', { ticket: repair.ticket, msg: 'Package delivered (' + updated.carrier + ' ' + updated.number + ')', by: 'system', at: new Date().toISOString() });
     }
 
-    res.status(200).json({ ok: true, registered: true, tracking: updated });
+    return json(200, { ok: true, registered: true, tracking: updated });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ error: 'Failed to refresh tracking', detail: String(e) });
+    return json(500, { error: 'Failed to refresh tracking', detail: String(e) });
   }
 };

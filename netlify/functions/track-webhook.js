@@ -1,31 +1,33 @@
+// POST /api/track-webhook -> /.netlify/functions/track-webhook
 // Webhook receiver for AfterShip's "tracking update" event. Configure this URL
-// (https://<your-domain>/api/track-webhook) in the AfterShip dashboard once
-// deployed, and set AFTERSHIP_WEBHOOK_SECRET to the signing secret it gives you.
-// This is what makes tracking update in near real time instead of waiting for
-// the daily cron fallback (track-cron.js).
+// (https://<your-netlify-domain>/api/track-webhook) in the AfterShip
+// dashboard once deployed, and set AFTERSHIP_WEBHOOK_SECRET to the signing
+// secret it gives you. This is what makes tracking update in near real time
+// instead of waiting for the daily scheduled sweep (track-cron.js).
 const crypto = require('crypto');
-const { sbGet, sbPatch, sbPost, mapStatus } = require('./_shared');
+const { sbGet, sbPatch, sbPost, mapStatus, json } = require('./utils/shared');
 
-module.exports = async (req, res) => {
-  if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return; }
+exports.handler = async function (event) {
+  if (event.httpMethod !== 'POST') return json(405, { error: 'Method not allowed' });
 
   try {
     var secret = process.env.AFTERSHIP_WEBHOOK_SECRET;
-    var rawBody = JSON.stringify(req.body || {});
+    var rawBody = event.isBase64Encoded ? Buffer.from(event.body || '', 'base64').toString('utf8') : (event.body || '');
     if (secret) {
-      var signature = req.headers['aftership-hmac-sha256'];
+      var signature = (event.headers || {})['aftership-hmac-sha256'];
       var expected = crypto.createHmac('sha256', secret).update(rawBody).digest('base64');
-      if (!signature || signature !== expected) { res.status(401).json({ error: 'Invalid signature' }); return; }
+      if (!signature || signature !== expected) return json(401, { error: 'Invalid signature' });
     }
 
-    var msg = (req.body && (req.body.msg || req.body)) || {};
+    var parsed = JSON.parse(rawBody || '{}');
+    var msg = parsed.msg || parsed;
     var t = msg.tracking || msg;
     var trackingNumber = t.tracking_number;
-    if (!trackingNumber) { res.status(200).json({ ok: true, ignored: true }); return; }
+    if (!trackingNumber) return json(200, { ok: true, ignored: true });
 
     var repairs = await sbGet('repairs', 'order=updatedAt.desc&limit=1000');
     var repair = repairs.find(function (r) { return r.tracking && r.tracking.indexOf(trackingNumber) !== -1; });
-    if (!repair) { res.status(200).json({ ok: true, matched: false }); return; }
+    if (!repair) return json(200, { ok: true, matched: false });
 
     var tr = typeof repair.tracking === 'string' ? JSON.parse(repair.tracking) : repair.tracking;
     var mapped = mapStatus(t.tag);
@@ -47,9 +49,9 @@ module.exports = async (req, res) => {
       await sbPost('activity', { ticket: repair.ticket, msg: 'Package delivered (' + updated.carrier + ' ' + updated.number + ')', by: 'system', at: new Date().toISOString() });
     }
 
-    res.status(200).json({ ok: true, matched: true });
+    return json(200, { ok: true, matched: true });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ error: 'Webhook processing failed', detail: String(e) });
+    return json(500, { error: 'Webhook processing failed', detail: String(e) });
   }
 };

@@ -1,16 +1,17 @@
-// POST { repairId, carrier, number, notes } — registers a shipment with AfterShip
-// (if configured) and stores the result on the repair's `tracking` column.
-// With no AFTERSHIP_API_KEY set, this just no-ops and the manual tracking info
-// already saved by the client stays exactly as-is - nothing breaks.
-const { sbPatch, CARRIER_SLUGS, mapStatus } = require('./_shared');
+// POST /api/track-create -> /.netlify/functions/track-create (see netlify.toml redirect)
+// Body: { repairId, carrier, number, notes } — registers a shipment with
+// AfterShip (if configured) and stores the result on the repair's `tracking`
+// column. With no AFTERSHIP_API_KEY set, this just no-ops and the manual
+// tracking info already saved by the client stays exactly as-is.
+const { sbPatch, CARRIER_SLUGS, mapStatus, json } = require('./utils/shared');
 
-module.exports = async (req, res) => {
-  if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return; }
+exports.handler = async function (event) {
+  if (event.httpMethod !== 'POST') return json(405, { error: 'Method not allowed' });
 
   try {
-    var body = req.body || {};
+    var body = JSON.parse(event.body || '{}');
     var repairId = body.repairId, carrier = body.carrier, number = body.number, notes = body.notes || '';
-    if (!repairId || !number) { res.status(400).json({ error: 'repairId and number are required' }); return; }
+    if (!repairId || !number) return json(400, { error: 'repairId and number are required' });
 
     var base = {
       carrier: carrier, number: number, notes: notes,
@@ -22,8 +23,7 @@ module.exports = async (req, res) => {
     var apiKey = process.env.AFTERSHIP_API_KEY;
     if (!apiKey) {
       await sbPatch('repairs', repairId, { tracking: JSON.stringify(base), updatedAt: new Date().toISOString() });
-      res.status(200).json({ ok: true, registered: false, tracking: base });
-      return;
+      return json(200, { ok: true, registered: false, tracking: base });
     }
 
     var payload = { tracking: { tracking_number: number } };
@@ -41,8 +41,7 @@ module.exports = async (req, res) => {
     var alreadyExists = data.meta && data.meta.code === 4003;
     if (!r.ok && !alreadyExists) {
       await sbPatch('repairs', repairId, { tracking: JSON.stringify(base), updatedAt: new Date().toISOString() });
-      res.status(200).json({ ok: true, registered: false, tracking: base, error: (data.meta || {}).message });
-      return;
+      return json(200, { ok: true, registered: false, tracking: base, error: (data.meta || {}).message });
     }
 
     var t = (data.data && data.data.tracking) || {};
@@ -60,9 +59,9 @@ module.exports = async (req, res) => {
     });
 
     await sbPatch('repairs', repairId, { tracking: JSON.stringify(updated), updatedAt: new Date().toISOString() });
-    res.status(200).json({ ok: true, registered: true, tracking: updated });
+    return json(200, { ok: true, registered: true, tracking: updated });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ error: 'Failed to register tracking', detail: String(e) });
+    return json(500, { error: 'Failed to register tracking', detail: String(e) });
   }
 };
