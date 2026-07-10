@@ -535,6 +535,10 @@ input:checked+.slider:before{transform:translateX(16px)}
       <div style="font-size:15px;font-weight:700;letter-spacing:-.3px;margin-bottom:4px">Staff Performance</div>
       <div style="font-size:12px;color:var(--text2);margin-bottom:20px">Repair counts and activity per employee</div>
       <div class="staff-grid" id="staffGrid"></div>
+
+      <div style="font-size:15px;font-weight:700;letter-spacing:-.3px;margin-bottom:4px;margin-top:32px">Top Issues Reported</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:20px">Most common issue categories, broken down by device size. Grouped by keyword match on the issue description.</div>
+      <div class="staff-grid" id="topIssuesGrid"></div>
     </div>
 
     <div class="content hidden admin-only" id="page-employees">
@@ -978,7 +982,8 @@ function canCloseTicket(r){
   return false;
 }
 // General employees can delete all non-customer tickets, and only their own
-// customer tickets. Admin can delete all. Others (tech) can delete only
+// customer tickets. Admin can delete all. View-only techs can never delete a
+// customer ticket, even one they created. Other techs can delete only
 // tickets they created.
 function canDeleteTicket(r){
   if(isSupportMode)return false;
@@ -988,6 +993,7 @@ function canDeleteTicket(r){
     if(r.type!=='customer')return true;
     return r.createdBy===currentUser;
   }
+  if(e.role==='tech'&&r.type==='customer'&&e.viewOnlyCustomer)return false;
   return r.createdBy===currentUser;
 }
 
@@ -2425,8 +2431,47 @@ function openSupportDetail(id){
   document.getElementById('detailModal').classList.remove('hidden');
 }
 
+// Lightweight keyword-based issue categorization - no external/AI dependency.
+// Falls back to "Other" when nothing matches, "Uncategorized" when there's
+// no issue text at all. First matching category wins.
+var ISSUE_CATEGORIES=[
+  {label:'Screen / Display',re:/screen|display|lcd|touch\s*screen|crack(ed)?\s*(glass|screen)/i},
+  {label:'Power / Charging',re:/won'?t\s*(turn\s*on|charge)|no\s*power|dead|power(s)?\s*off|charg(e|ing|er)|battery/i},
+  {label:'Audio / Speaker',re:/speaker|audio|sound|volume|static|mute|mic(rophone)?/i},
+  {label:'WiFi / Connectivity',re:/wi-?fi|bluetooth|connect(ivity)?|network|offline|pairing/i},
+  {label:'Software / Firmware',re:/software|firmware|update|freeze|frozen|glitch|bug|reset|stuck|boot\s*loop/i},
+  {label:'Physical Damage',re:/damage|broken|crack|dropped|dent|water|liquid/i},
+  {label:'Button / Port',re:/button|port|usb|jack|switch/i}
+];
+function categorizeIssue(text){
+  if(!text||!text.trim())return'Uncategorized';
+  for(var i=0;i<ISSUE_CATEGORIES.length;i++){
+    if(ISSUE_CATEGORIES[i].re.test(text))return ISSUE_CATEGORIES[i].label;
+  }
+  return'Other';
+}
+function renderTopIssues(){
+  var el=document.getElementById('topIssuesGrid');if(!el)return;
+  var byCat={};
+  _repairs.forEach(function(r){
+    var cat=categorizeIssue(r.issue);
+    if(!byCat[cat])byCat[cat]={count:0,bySize:{}};
+    byCat[cat].count++;
+    var sz=r.size||'Unspecified';
+    byCat[cat].bySize[sz]=(byCat[cat].bySize[sz]||0)+1;
+  });
+  var cats=Object.keys(byCat).sort(function(a,b){return byCat[b].count-byCat[a].count;});
+  if(!cats.length){el.innerHTML='<div class="empty"><p>No issue data yet</p></div>';return;}
+  el.innerHTML=cats.map(function(cat){
+    var d=byCat[cat];
+    var sizes=Object.keys(d.bySize).sort(function(a,b){return d.bySize[b]-d.bySize[a];});
+    var sizeChips=sizes.map(function(s){return'<span class="badge b-blue" style="margin:2px 4px 2px 0">'+s+': '+d.bySize[s]+'</span>';}).join('');
+    return'<div class="staff-card"><div class="sc-head"><div><div class="sc-name">'+cat+'</div></div><div class="sc-total"><div class="sc-total-num">'+d.count+'</div><div class="sc-total-lbl">Reports</div></div></div><div style="margin-top:10px">'+sizeChips+'</div></div>';
+  }).join('');
+}
 function renderStats(){
   if(!currentUser)return;
+  renderTopIssues();
   document.getElementById('staffGrid').innerHTML=_employees.map(function(e){
     var all=_repairs.filter(function(r){return r.createdBy===e.id;});
     var active=all.filter(function(r){return r.status!=='Closed';});
