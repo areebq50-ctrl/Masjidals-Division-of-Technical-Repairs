@@ -3,7 +3,9 @@
 // - UPS direct for tracking.slug === 'ups-direct', AfterShip otherwise - in
 // case a webhook was missed or never configured. This is what guarantees a
 // shipment keeps getting checked all the way until it's marked Delivered.
-// Also reachable manually at /api/track-cron for testing.
+// Netlify blocks triggering scheduled functions via a direct URL in
+// production - to run this on demand, use Netlify -> Functions -> track-cron
+// -> "Run now" in the dashboard instead.
 const { sbGet, sbPatch, sbPost, mapStatus, trackUpsDirect, json } = require('./utils/shared');
 
 exports.handler = async function () {

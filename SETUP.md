@@ -184,9 +184,11 @@ for UPS.
 ### Scheduled function note
 
 The daily fallback sweep (`track-cron`, 1pm UTC) is a [Netlify Scheduled
-Function](https://docs.netlify.com/functions/scheduled-functions/), declared
-in `netlify.toml`. This is included on Netlify's free tier — no paid plan
-required. It's also reachable manually at `/api/track-cron` for testing.
+Function](https://docs.netlify.com/build/functions/scheduled-functions/),
+declared in `netlify.toml`. This is included on Netlify's free tier — no
+paid plan required. Scheduled functions can't be triggered by visiting a
+URL in production (Netlify blocks that) - to run it on demand, go to
+Netlify → your site → **Functions** → `track-cron` → **Run now**.
 
 ## 3. Turn on Ask AI (optional)
 
