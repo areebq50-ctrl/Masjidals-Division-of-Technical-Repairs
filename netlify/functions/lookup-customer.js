@@ -6,16 +6,14 @@
 // (found:false) if the relevant env vars aren't configured, so the app just
 // quietly does nothing until you set these up - see SETUP.md.
 //
-// Warranty assumption (confirm/correct this - see SETUP.md): standard
-// warranty is 12 months from the Shopify order date. If any line item on
-// the order has "warranty" in its title, treated as an extended warranty
-// purchase and the total is bumped to 24 months. Adjust WARRANTY_MONTHS /
-// EXTENDED_WARRANTY_MONTHS below, and the "warranty" title match, once you
-// tell me your actual extended-warranty product name and duration.
+// Warranty: standard warranty is 12 months from the Shopify order date. If
+// the order has a line item with SKU "aframewarranty" (the $30 extended
+// warranty add-on, +1 year), the total is bumped to 24 months.
 const { json } = require('./utils/shared');
 
 var WARRANTY_MONTHS = 12;
 var EXTENDED_WARRANTY_MONTHS = 24;
+var EXTENDED_WARRANTY_SKU = 'aframewarranty';
 
 // Returns { name, email, phone } on a match, null if simply not
 // configured/not found, or { error: '...' } on a real API failure (bad
@@ -70,7 +68,7 @@ async function lookupShopify(ordnum){
     }
     if(order.created_at){
       result.purchaseDate=String(order.created_at).slice(0,10);
-      var hasExtended=(order.line_items||[]).some(function(li){return /warranty/i.test(li.title||'');});
+      var hasExtended=(order.line_items||[]).some(function(li){return (li.sku||'').trim().toLowerCase()===EXTENDED_WARRANTY_SKU;});
       result.warrantyMonths=hasExtended?EXTENDED_WARRANTY_MONTHS:WARRANTY_MONTHS;
     }
     if(!result.name&&!result.email&&!result.purchaseDate)return null;
