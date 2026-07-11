@@ -31,12 +31,26 @@ function cleanZendeskSubdomain(s){
   return (s||'').trim().replace(/^https?:\/\//i,'').replace(/\.zendesk\.com.*$/i,'').replace(/\/.*$/,'');
 }
 
+// A real Zendesk account subdomain is only letters/digits/hyphens. Anything
+// else (spaces, dots, an API token pasted into the wrong field, etc.) will
+// never resolve to a real account - Zendesk's edge rejects the TLS
+// handshake for unrecognized hostnames, which surfaces as a confusing
+// ERR_SSL_TLS_ALERT_HANDSHAKE_FAILURE instead of a clear "wrong value"
+// error. Catch it before making the request.
+function isValidZendeskSubdomain(s){
+  return /^[a-z0-9-]+$/i.test(s);
+}
+
 // Returns { name, email, phone } on a match, null if simply not
 // configured/not found, or { error: '...' } on a real API failure (bad
 // credentials, network issue, etc.) so the caller can tell the difference.
 async function lookupZendesk(zdid){
   var subdomain=cleanZendeskSubdomain(process.env.ZENDESK_SUBDOMAIN), email=process.env.ZENDESK_EMAIL, token=process.env.ZENDESK_API_TOKEN;
   if(!subdomain||!email||!token||!zdid)return null;
+  if(!isValidZendeskSubdomain(subdomain)){
+    return {error:'ZENDESK_SUBDOMAIN is set to "'+subdomain+'", which is not a valid Zendesk account name (letters/numbers/hyphens only). '+
+      'It should be just the account name, e.g. if your Zendesk URL is https://masjidal.zendesk.com, set ZENDESK_SUBDOMAIN=masjidal - nothing else, no token or full URL.'};
+  }
   try{
     var auth=Buffer.from(email+'/token:'+token).toString('base64');
     var headers={Authorization:'Basic '+auth,'Content-Type':'application/json'};
