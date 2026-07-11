@@ -46,7 +46,15 @@ exports.handler = async function (event) {
     var data = Array.isArray(body.data) ? body.data : [];
     if (!question) return json(400, { error: 'question is required' });
     if (question.length > 2000) return json(400, { error: 'Question is too long' });
-    if (data.length > 3000) data = data.slice(0, 3000);
+    // Cap record count and trim long free-text fields - this is what's sent
+    // on every single question with no caching, so keeping it lean matters
+    // for response time, not just cost.
+    if (data.length > 1200) data = data.slice(0, 1200);
+    data = data.map(function (r) {
+      var out = {};
+      for (var k in r) { out[k] = (typeof r[k] === 'string' && r[k].length > 200) ? r[k].slice(0, 200) : r[k]; }
+      return out;
+    });
 
     // "gemini-flash-latest" is Google's rolling alias for their current
     // recommended fast model, so this doesn't go stale the way a pinned
@@ -56,26 +64,52 @@ exports.handler = async function (event) {
     var primaryModel = process.env.GEMINI_MODEL || 'gemini-flash-latest';
     var userPrompt = 'Repair records (JSON array, ' + data.length + ' records):\n' + JSON.stringify(data) + '\n\nQuestion: ' + question;
 
-    function callGemini(model) {
+    function callGemini(model, skipThinkingConfig) {
+      var generationConfig = { responseMimeType: 'application/json', responseSchema: RESPONSE_SCHEMA, temperature: 0.2, maxOutputTokens: 1024 };
+      // This is simple data lookup/counting, not multi-step reasoning - the
+      // "thinking" step newer Gemini models do by default before answering
+      // adds real latency for no benefit here, so turn it off. Some model
+      // versions don't support this field, so we retry without it below if
+      // that's what caused a request to fail.
+      if (!skipThinkingConfig) generationConfig.thinkingConfig = { thinkingBudget: 0 };
+      var controller = new AbortController();
+      var timeout = setTimeout(function () { controller.abort(); }, 20000);
       return fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + apiKey, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
           contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-          generationConfig: { responseMimeType: 'application/json', responseSchema: RESPONSE_SCHEMA, temperature: 0.2 }
+          generationConfig: generationConfig
         })
-      });
+      }).finally(function () { clearTimeout(timeout); });
     }
 
-    var r = await callGemini(primaryModel);
+    var r;
+    try {
+      r = await callGemini(primaryModel, false);
+    } catch (e) {
+      if (e.name === 'AbortError') return json(504, { error: 'AI request timed out', detail: 'Gemini did not respond within 20s - try a more specific question.' });
+      throw e;
+    }
 
     // If the model name itself is the problem (renamed/retired again in the
     // future) and no explicit GEMINI_MODEL override is set, retry once
     // against a specific known-good version rather than failing outright.
     if (!r.ok && r.status === 404 && !process.env.GEMINI_MODEL) {
       console.error('Gemini model "'+primaryModel+'" not found, retrying with gemini-2.5-flash');
-      r = await callGemini('gemini-2.5-flash');
+      r = await callGemini('gemini-2.5-flash', false);
+    }
+
+    // If thinkingConfig itself isn't supported by whichever model resolved,
+    // retry once without it rather than failing the whole request.
+    if (!r.ok && r.status === 400) {
+      var checkText = await r.clone().text();
+      if (/thinking/i.test(checkText)) {
+        console.error('Gemini rejected thinkingConfig, retrying without it');
+        r = await callGemini(primaryModel, true);
+      }
     }
 
     if (!r.ok) {

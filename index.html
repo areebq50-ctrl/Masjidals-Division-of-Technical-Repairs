@@ -1651,14 +1651,16 @@ async function askAI(){
   convo.scrollTop=convo.scrollHeight;
   qEl.value='';qEl.style.height='auto';
   btn.disabled=true;
+  var controller=new AbortController();
+  var timeoutId=setTimeout(function(){controller.abort();},25000);
   try{
     // PII-free snapshot: no zdid/ordnum/serial/custName/custEmail/custPhone.
-    var data=_repairs.slice(0,3000).map(function(r){
+    var data=_repairs.slice(0,1200).map(function(r){
       return {type:r.type,size:r.size,issue:r.issue,year:r.year,android:r.android,status:r.status,
         outcome:r.outcome,createdAt:r.createdAt,closedAt:r.closedAt,
         trackingStatus:(getTracking(r)||{}).statusText||null};
     });
-    var resp=await fetch('/api/ai-ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:question,data:data})});
+    var resp=await fetch('/api/ai-ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:question,data:data}),signal:controller.signal});
     var result=await resp.json();
     var box=document.getElementById(qId);
     if(!resp.ok||!result.answer){
@@ -1677,8 +1679,10 @@ async function askAI(){
     }
   }catch(e){
     console.error(e);
-    var box2=document.getElementById(qId);if(box2)box2.textContent='Something went wrong asking AI. Try again.';
+    var box2=document.getElementById(qId);
+    if(box2)box2.textContent=(e.name==='AbortError')?'That took too long to answer (25s+). Try a more specific question, or try again.':'Something went wrong asking AI. Try again.';
   }
+  clearTimeout(timeoutId);
   convo.scrollTop=convo.scrollHeight;
   btn.disabled=false;
 }
