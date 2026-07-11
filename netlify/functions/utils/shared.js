@@ -55,22 +55,50 @@ function json(statusCode, obj) {
   return { statusCode: statusCode, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(obj) };
 }
 
+// "fetch failed" from Node hides the real reason (DNS lookup failure, bad
+// cert, connection refused, etc.) in e.cause - surface that instead of the
+// useless top-level message.
+function describeFetchError(e) {
+  var cause = e && e.cause;
+  var causeMsg = cause ? (cause.code || cause.message || String(cause)) : '';
+  return String(e) + (causeMsg ? ' (cause: ' + causeMsg + ')' : '');
+}
+
 // --- UPS direct tracking (free UPS Developer Kit API - no AfterShip needed) ---
 // OAuth2 client_credentials token. Fetched fresh per request rather than
 // cached, since these are short-lived serverless invocations - simpler and
 // still well within UPS's rate limits for this shop's volume.
+//
+// Returns null only when UPS_CLIENT_ID/UPS_CLIENT_SECRET aren't set at all
+// (i.e. UPS tracking just isn't turned on) - a real failure (bad
+// credentials, network issue, UPS app not yet approved for production,
+// etc.) throws instead so callers can surface the actual reason rather than
+// silently doing nothing.
 async function getUpsToken() {
   var id = process.env.UPS_CLIENT_ID, secret = process.env.UPS_CLIENT_SECRET;
   if (!id || !secret) return null;
   var auth = Buffer.from(id + ':' + secret).toString('base64');
-  var r = await fetch('https://onlinetools.ups.com/security/v1/oauth/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Authorization: 'Basic ' + auth },
-    body: 'grant_type=client_credentials'
-  });
-  if (!r.ok) { console.error('UPS OAuth failed', r.status, await r.text()); return null; }
+  var r;
+  try {
+    r = await fetch('https://onlinetools.ups.com/security/v1/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Authorization: 'Basic ' + auth },
+      body: 'grant_type=client_credentials'
+    });
+  } catch (e) {
+    throw new Error('UPS authentication request failed: ' + describeFetchError(e));
+  }
+  if (!r.ok) {
+    var errText = await r.text();
+    // A 401/invalid_client here almost always means the UPS app hasn't been
+    // approved for production access yet (new UPS apps start in a sandbox
+    // state) - flag that possibility since it's the most common cause.
+    var hint = (r.status === 401 || /invalid_client/i.test(errText)) ? ' - if this app was just created, it may still need UPS to approve production access for the Tracking API.' : '';
+    throw new Error('UPS authentication failed (' + r.status + '): ' + errText.substring(0, 300) + hint);
+  }
   var data = await r.json();
-  return data.access_token || null;
+  if (!data.access_token) throw new Error('UPS authentication succeeded but returned no access token.');
+  return data.access_token;
 }
 
 const UPS_STATUS_MAP = {
@@ -84,17 +112,28 @@ const UPS_STATUS_MAP = {
 // Returns the same normalized shape the AfterShip path uses
 // ({statusTag, statusText, statusColor, expectedDelivery, checkpoints}) so
 // the rest of the app doesn't need to know which backend served it.
+// Returns null only when UPS isn't configured at all; throws on any real
+// failure (bad credentials, network issue, bad tracking number, etc.) so
+// the caller can show what actually went wrong.
 async function trackUpsDirect(trackingNumber) {
   var token = await getUpsToken();
   if (!token) return null;
-  var r = await fetch('https://onlinetools.ups.com/api/track/v1/details/' + encodeURIComponent(trackingNumber), {
-    headers: { Authorization: 'Bearer ' + token, transId: 'dtr-' + Date.now(), transactionSrc: 'MasjidalDTR' }
-  });
-  if (!r.ok) { console.error('UPS tracking lookup failed', r.status, await r.text()); return null; }
+  var r;
+  try {
+    r = await fetch('https://onlinetools.ups.com/api/track/v1/details/' + encodeURIComponent(trackingNumber), {
+      headers: { Authorization: 'Bearer ' + token, transId: 'dtr-' + Date.now(), transactionSrc: 'MasjidalDTR' }
+    });
+  } catch (e) {
+    throw new Error('UPS tracking request failed: ' + describeFetchError(e));
+  }
+  if (!r.ok) {
+    var errText = await r.text();
+    throw new Error('UPS tracking lookup failed (' + r.status + '): ' + errText.substring(0, 300));
+  }
   var data = await r.json();
   var shipment = data.trackResponse && data.trackResponse.shipment && data.trackResponse.shipment[0];
   var pkg = shipment && shipment.package && shipment.package[0];
-  if (!pkg) return null;
+  if (!pkg) throw new Error('UPS returned no tracking data for "' + trackingNumber + '" - double check the tracking number is correct.');
 
   var cur = pkg.currentStatus || {};
   var mapped = UPS_STATUS_MAP[cur.type] || { label: cur.description || 'Unknown', color: 'blue' };
@@ -123,4 +162,4 @@ async function trackUpsDirect(trackingNumber) {
   };
 }
 
-module.exports = { sbGet, sbPatch, sbPost, CARRIER_SLUGS, STATUS_MAP, mapStatus, json, trackUpsDirect, SUPABASE_URL, SUPABASE_KEY };
+module.exports = { sbGet, sbPatch, sbPost, CARRIER_SLUGS, STATUS_MAP, mapStatus, json, trackUpsDirect, describeFetchError, SUPABASE_URL, SUPABASE_KEY };

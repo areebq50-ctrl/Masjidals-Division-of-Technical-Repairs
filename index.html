@@ -2658,11 +2658,18 @@ async function saveTracking(){
   }catch(e){console.error(e);toast('Error saving tracking.');setSyncError();}
 }
 
-// Registers the tracking number with the live carrier-tracking backend (Vercel /api route).
-// Fails silently if the endpoint isn't deployed yet (e.g. still on Netlify) - manual tracking still works.
+// Registers the tracking number with the live carrier-tracking Netlify function.
+// If live tracking isn't configured at all, this just no-ops - manual
+// tracking info still works. If it IS configured but the lookup actually
+// failed (bad UPS credentials, bad tracking number, etc.), surface that so
+// it doesn't look like it silently worked.
 function registerLiveTracking(repairId,carrier,number,notes){
   fetch('/api/track-create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({repairId:repairId,carrier:carrier,number:number,notes:notes})})
-    .then(function(){return doLoad();})
+    .then(function(r){return r.json();})
+    .then(function(data){
+      if(data&&data.error)toast('Live tracking: '+data.error);
+      return doLoad();
+    })
     .catch(function(e){console.error('Live tracking registration unavailable',e);});
 }
 
@@ -2672,10 +2679,15 @@ async function refreshTrackingStatus(id){
   try{
     var resp=await fetch('/api/track-refresh',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({repairId:id})});
     var data=await resp.json();
-    if(!resp.ok)throw new Error(data.error||'refresh failed');
-    toast(data.registered===false?(data.message||'Live tracking not enabled'):'Tracking updated');
-    await doLoad();
-    if(_detailId===id)openDetail(id);
+    if(!resp.ok){
+      await doLoad();
+      if(_detailId===id)openDetail(id);
+      toast(data.detail||data.error||'Tracking refresh failed');
+    }else{
+      toast(data.registered===false?(data.message||'Live tracking not enabled'):'Tracking updated');
+      await doLoad();
+      if(_detailId===id)openDetail(id);
+    }
   }catch(e){console.error(e);toast('Could not refresh tracking status.');}
   if(btn){btn.disabled=false;btn.textContent='Refresh Status';}
 }
@@ -2719,8 +2731,10 @@ function renderTrackingSection(r){
       html+='<div style="font-size:12px"><strong>'+(cp.message||cp.tag||'')+'</strong>'+(loc?' — '+loc:'')+'<div style="color:var(--text3);font-size:11px">'+fmt(cp.checkpoint_time||cp.created_at)+'</div></div>';
     });
     html+='</div>';
+  }else if(tr.lastError){
+    html+='<div style="font-size:12px;color:var(--red)">Live tracking failed: '+tr.lastError+'</div>';
   }else if(!tr.registered){
-    var missing=(tr.carrier==='UPS')?'UPS_CLIENT_ID/UPS_CLIENT_SECRET, or AfterShip as a fallback,':'an AfterShip API key';
+    var missing=(tr.carrier==='UPS')?'UPS_CLIENT_ID/UPS_CLIENT_SECRET':'an AfterShip API key';
     html+='<div style="font-size:12px;color:var(--text3)">Live tracking isn\'t set up for this carrier yet ('+missing+' not configured) — showing manually entered info only. See SETUP.md.</div>';
   }
   if(tr.notes)html+='<div style="font-size:12px;color:var(--text2);margin-top:10px">Note: '+tr.notes+'</div>';

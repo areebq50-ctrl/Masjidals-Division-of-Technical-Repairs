@@ -9,20 +9,11 @@
 // Warranty: standard warranty is 12 months from the Shopify order date. If
 // the order has a line item with SKU "aframewarranty" (the $30 extended
 // warranty add-on, +1 year), the total is bumped to 24 months.
-const { json } = require('./utils/shared');
+const { json, describeFetchError } = require('./utils/shared');
 
 var WARRANTY_MONTHS = 12;
 var EXTENDED_WARRANTY_MONTHS = 24;
 var EXTENDED_WARRANTY_SKU = 'aframewarranty';
-
-// "fetch failed" from Node hides the real reason (DNS lookup failure, bad
-// cert, connection refused, etc.) in e.cause - surface that instead of the
-// useless top-level message.
-function describeFetchError(e){
-  var cause=e&&e.cause;
-  var causeMsg=cause?(cause.code||cause.message||String(cause)):'';
-  return String(e)+(causeMsg?' (cause: '+causeMsg+')':'');
-}
 
 // Tolerates the most common copy/paste mistakes: pasting the full URL
 // (https://foo.zendesk.com) or the domain with .zendesk.com already

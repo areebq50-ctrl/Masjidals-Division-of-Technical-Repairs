@@ -169,6 +169,16 @@ free Tracking API — no AfterShip account or paid plan needed:
    status via UPS directly, shown in the ticket detail view, refreshed by
    the "Refresh Status" button and the daily scheduled sweep.
 
+**If UPS tracking isn't working**: open the ticket detail view and check the
+message under the tracking status — it now shows the real reason instead of
+a generic error (bad credentials, a UPS app still awaiting production
+approval, etc.), so you don't need to check Netlify function logs. The most
+common cause: a UPS Developer app starts out sandboxed and needs UPS to
+approve it for **production** access to the Tracking API before
+`onlinetools.ups.com` (the production endpoint this app uses) will accept
+requests from it — check your app's status at developer.ups.com if you're
+seeing an authentication error.
+
 **Limitation to know about**: UPS's free API doesn't offer an easy webhook
 for real-time push updates (that requires UPS's separate Quantum View
 enterprise product), so UPS-tracked shipments only update when someone

@@ -1,7 +1,8 @@
 // POST /api/track-refresh -> /.netlify/functions/track-refresh
 // Body: { repairId } — on-demand refresh, used by the "Refresh Status" button
-// in the ticket detail view. Uses UPS direct (free) if this tracking was
-// registered that way (tr.slug === 'ups-direct'), otherwise AfterShip.
+// in the ticket detail view. Uses UPS direct (free) whenever the tracking
+// record's carrier is UPS (even if a previous attempt failed to register -
+// worth retrying, e.g. after fixing UPS credentials), otherwise AfterShip.
 const { sbGet, sbPatch, sbPost, mapStatus, trackUpsDirect, json } = require('./utils/shared');
 
 exports.handler = async function (event) {
@@ -16,15 +17,27 @@ exports.handler = async function (event) {
     if (!repair || !repair.tracking) return json(404, { error: 'No tracking on this repair' });
 
     var tr = typeof repair.tracking === 'string' ? JSON.parse(repair.tracking) : repair.tracking;
-    if (!tr.slug) return json(200, { ok: true, registered: false, message: 'Not registered for live tracking yet' });
+    // Retry on carrier, not on tr.slug - if UPS failed the first time (bad
+    // creds, app not yet approved, etc.) slug never got set to 'ups-direct',
+    // so gating on slug here would permanently give up on it even after the
+    // underlying problem is fixed.
+    if (tr.carrier !== 'UPS' && !tr.slug) return json(200, { ok: true, registered: false, message: 'Not registered for live tracking yet' });
 
     var wasDelivered = tr.status === 'Delivered';
     var updated;
 
-    if (tr.slug === 'ups-direct') {
-      var upsResult = await trackUpsDirect(tr.number);
-      if (!upsResult) return json(502, { error: 'UPS lookup failed - check UPS_CLIENT_ID/UPS_CLIENT_SECRET' });
+    if (tr.carrier === 'UPS') {
+      var upsResult;
+      try {
+        upsResult = await trackUpsDirect(tr.number);
+      } catch (e) {
+        var upsFailedTr = Object.assign({}, tr, { lastError: e.message });
+        await sbPatch('repairs', repairId, { tracking: JSON.stringify(upsFailedTr), updatedAt: new Date().toISOString() });
+        return json(502, { error: 'UPS lookup failed', detail: e.message });
+      }
+      if (!upsResult) return json(200, { ok: true, registered: false, message: 'UPS tracking is not configured yet - add UPS_CLIENT_ID/UPS_CLIENT_SECRET in Netlify.' });
       updated = Object.assign({}, tr, {
+        slug: 'ups-direct', registered: true, lastError: null,
         status: upsResult.statusTag,
         statusText: upsResult.statusText,
         statusColor: upsResult.statusColor,

@@ -1,8 +1,9 @@
 // Scheduled Netlify Function (see netlify.toml "schedule") — runs daily.
 // Re-checks every repair with an active (non-delivered) live tracking record
-// - UPS direct for tracking.slug === 'ups-direct', AfterShip otherwise - in
-// case a webhook was missed or never configured. This is what guarantees a
-// shipment keeps getting checked all the way until it's marked Delivered.
+// - UPS direct when the carrier is UPS (retried even if a previous attempt
+// failed to register), AfterShip otherwise - in case a webhook was missed
+// or never configured. This is what guarantees a shipment keeps getting
+// checked all the way until it's marked Delivered.
 // Netlify blocks triggering scheduled functions via a direct URL in
 // production - to run this on demand, use Netlify -> Functions -> track-cron
 // -> "Run now" in the dashboard instead.
@@ -19,7 +20,9 @@ exports.handler = async function () {
       if (!r.tracking) return false;
       var tr;
       try { tr = typeof r.tracking === 'string' ? JSON.parse(r.tracking) : r.tracking; } catch (e) { return false; }
-      return !!(tr && tr.slug && tr.status !== 'Delivered');
+      // Include UPS-carrier repairs even if slug never got set (a failed
+      // registration shouldn't permanently exclude it from retries).
+      return !!(tr && (tr.slug || tr.carrier === 'UPS') && tr.status !== 'Delivered');
     });
 
     var results = [];
@@ -30,11 +33,18 @@ exports.handler = async function () {
       try {
         var updated;
 
-        if (tr.slug === 'ups-direct') {
+        if (tr.carrier === 'UPS') {
           if (!hasUps) { results.push({ id: r.id, skipped: 'UPS not configured' }); continue; }
-          var upsResult = await trackUpsDirect(tr.number);
-          if (!upsResult) { results.push({ id: r.id, error: 'UPS lookup failed' }); continue; }
+          var upsResult;
+          try {
+            upsResult = await trackUpsDirect(tr.number);
+          } catch (e) {
+            await sbPatch('repairs', r.id, { tracking: JSON.stringify(Object.assign({}, tr, { lastError: e.message })), updatedAt: new Date().toISOString() });
+            results.push({ id: r.id, error: e.message });
+            continue;
+          }
           updated = Object.assign({}, tr, {
+            slug: 'ups-direct', registered: true, lastError: null,
             status: upsResult.statusTag,
             statusText: upsResult.statusText,
             statusColor: upsResult.statusColor,
