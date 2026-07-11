@@ -86,6 +86,9 @@ exports.handler = async function (event) {
     var zdid=(body.zdid||'').trim(), ordnum=(body.ordnum||'').trim();
     if(!zdid&&!ordnum) return json(400,{found:false,message:'Provide a Zendesk ID or Order Number.'});
 
+    var zdConfigured=!!(process.env.ZENDESK_SUBDOMAIN&&process.env.ZENDESK_EMAIL&&process.env.ZENDESK_API_TOKEN);
+    var shConfigured=!!(process.env.SHOPIFY_STORE_DOMAIN&&process.env.SHOPIFY_ADMIN_TOKEN);
+
     var zdResult=await lookupZendesk(zdid);
     var shResult=await lookupShopify(ordnum);
     var zdError=zdResult&&zdResult.error, shError=shResult&&shResult.error;
@@ -97,7 +100,17 @@ exports.handler = async function (event) {
         // distinguishable from "not configured" / genuinely nothing found.
         return json(200,{found:false,message:[zdError,shError].filter(Boolean).join(' | ')});
       }
-      return json(200,{found:false,message:'No match found (or lookups not configured yet - see SETUP.md).'});
+      // Make it unambiguous whether this is "not configured" vs "genuinely
+      // no match" - these used to collapse into one generic message.
+      if(!zdConfigured&&!shConfigured){
+        return json(200,{found:false,message:'Neither Zendesk nor Shopify is configured yet - add the env vars in Netlify and redeploy (see SETUP.md).'});
+      }
+      var unconfigured=[];
+      if(zdid&&!zdConfigured)unconfigured.push('Zendesk not configured');
+      if(ordnum&&!shConfigured)unconfigured.push('Shopify not configured');
+      var msg='No matching '+[zdid?'Zendesk ticket':null,ordnum?'Shopify order':null].filter(Boolean).join(' or ')+' found for that ID/order.';
+      if(unconfigured.length)msg+=' ('+unconfigured.join(', ')+')';
+      return json(200,{found:false,message:msg});
     }
 
     var merged={
