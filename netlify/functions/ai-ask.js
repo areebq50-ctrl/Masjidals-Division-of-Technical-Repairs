@@ -37,9 +37,8 @@ var SYSTEM_PROMPT = 'You are a data analyst answering questions about a device r
   'For date/time questions ("today", "this week", "past N days/months"), always compare against the "Today\'s date" value given to you, never guess it from the data - and use closedAt for questions about when something was sent/shipped/resolved/replaced, createdAt for questions about when a ticket was opened/created. ' +
   'Count carefully and precisely: go through the records methodically rather than estimating, and if you provide a "table" breakdown, the individual values in it must sum to (or otherwise exactly match) any total number stated in the answer text - never let the answer text and the table disagree. ' +
   'Keep the answer concise and conversational (2-4 sentences). ' +
-  'If the question asks for a breakdown, count, ranking, or comparison (e.g. "how many by X", "top issues", "android 6 vs 11", "which size has the most issues"), ' +
-  'also fill in the "table" field with one row per category as {label, value} - value should be the count or metric as a string, sorted most-to-least relevant. ' +
-  'If the question is not a breakdown/count/ranking question, omit the table field or return it empty.';
+  'Only fill in the "table" field when the question asks for a breakdown/ranking/comparison ACROSS MULTIPLE categories (e.g. "how many by X", "top issues", "android 6 vs 11", "which size has the most issues") - one row per category as {label, value}, sorted most-to-least relevant. ' +
+  'A question asking for a single total (e.g. "how many X were sent today") does NOT need a table - just state the number in the answer text and omit the table field (or leave it empty) to keep the response short.';
 
 exports.handler = async function (event) {
   if (event.httpMethod !== 'POST') return json(405, { error: 'Method not allowed' });
@@ -76,7 +75,13 @@ exports.handler = async function (event) {
     var userPrompt = 'Today\'s date: ' + today + '\n\nRepair records (JSON array, ' + data.length + ' records):\n' + JSON.stringify(data) + '\n\nQuestion: ' + question;
 
     function callGemini(model, skipThinkingConfig) {
-      var generationConfig = { responseMimeType: 'application/json', responseSchema: RESPONSE_SCHEMA, temperature: 0, maxOutputTokens: 1024 };
+      // maxOutputTokens too low was the direct cause of a real bug: the
+      // model's structured JSON response was getting cut off mid-string
+      // before it could close its quotes/braces, so JSON.parse() failed
+      // and the raw broken JSON fragment ("{ \"answer\": \"Today...") got
+      // shown to the user as if it were the answer. Generous headroom here
+      // costs a bit more but a truncated response is unusable either way.
+      var generationConfig = { responseMimeType: 'application/json', responseSchema: RESPONSE_SCHEMA, temperature: 0, maxOutputTokens: 3072 };
       // Fully disabling "thinking" (budget 0) was fast but made counting/
       // date-filtering questions unreliable - the model would eyeball the
       // JSON array instead of actually working through it, producing
@@ -134,10 +139,26 @@ exports.handler = async function (event) {
     var respData = await r.json();
     var candidate = respData.candidates && respData.candidates[0];
     var text = candidate && candidate.content && candidate.content.parts && candidate.content.parts[0] && candidate.content.parts[0].text;
+    var finishReason = candidate && candidate.finishReason;
     if (!text) return json(502, { error: 'AI returned no content' });
 
     var parsed;
-    try { parsed = JSON.parse(text); } catch (e) { return json(200, { answer: text, table: [] }); }
+    try {
+      parsed = JSON.parse(text);
+    } catch (e) {
+      // Invalid JSON is Gemini's internal wire format breaking (usually a
+      // response cut off mid-string by the token limit) - never show that
+      // raw to the user, it's not an answer. Try to salvage the "answer"
+      // string up to wherever it got cut, so at least a partial answer is
+      // useful, and flag clearly that it was cut off.
+      var m = text.match(/"answer"\s*:\s*"((?:[^"\\]|\\.)*)/);
+      if (m) {
+        var salvaged = m[1].replace(/\\n/g, ' ').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+        return json(200, { answer: salvaged + ' [cut off - try a more specific question]', table: [] });
+      }
+      console.error('Gemini returned unparseable JSON', finishReason, text.substring(0, 300));
+      return json(502, { error: 'AI response was cut off or malformed', detail: finishReason === 'MAX_TOKENS' ? 'The response hit the token limit - try a more specific question.' : 'Could not parse the AI response.' });
+    }
 
     return json(200, { answer: parsed.answer || '', table: parsed.table || [] });
   } catch (e) {
