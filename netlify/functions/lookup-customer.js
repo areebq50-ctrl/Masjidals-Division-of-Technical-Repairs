@@ -15,11 +15,27 @@ var WARRANTY_MONTHS = 12;
 var EXTENDED_WARRANTY_MONTHS = 24;
 var EXTENDED_WARRANTY_SKU = 'aframewarranty';
 
+// "fetch failed" from Node hides the real reason (DNS lookup failure, bad
+// cert, connection refused, etc.) in e.cause - surface that instead of the
+// useless top-level message.
+function describeFetchError(e){
+  var cause=e&&e.cause;
+  var causeMsg=cause?(cause.code||cause.message||String(cause)):'';
+  return String(e)+(causeMsg?' (cause: '+causeMsg+')':'');
+}
+
+// Tolerates the most common copy/paste mistakes: pasting the full URL
+// (https://foo.zendesk.com) or the domain with .zendesk.com already
+// attached, instead of just the subdomain.
+function cleanZendeskSubdomain(s){
+  return (s||'').trim().replace(/^https?:\/\//i,'').replace(/\.zendesk\.com.*$/i,'').replace(/\/.*$/,'');
+}
+
 // Returns { name, email, phone } on a match, null if simply not
 // configured/not found, or { error: '...' } on a real API failure (bad
 // credentials, network issue, etc.) so the caller can tell the difference.
 async function lookupZendesk(zdid){
-  var subdomain=process.env.ZENDESK_SUBDOMAIN, email=process.env.ZENDESK_EMAIL, token=process.env.ZENDESK_API_TOKEN;
+  var subdomain=cleanZendeskSubdomain(process.env.ZENDESK_SUBDOMAIN), email=process.env.ZENDESK_EMAIL, token=process.env.ZENDESK_API_TOKEN;
   if(!subdomain||!email||!token||!zdid)return null;
   try{
     var auth=Buffer.from(email+'/token:'+token).toString('base64');
@@ -39,14 +55,22 @@ async function lookupZendesk(zdid){
     if(!u.name&&!u.email)return null;
     return {name:u.name||'',email:u.email||'',phone:u.phone||''};
   }catch(e){
-    return {error:'Zendesk request failed: '+String(e)};
+    return {error:'Zendesk request failed: '+describeFetchError(e)};
   }
+}
+
+// Tolerates pasting the full URL or the bare store name without
+// ".myshopify.com" attached.
+function cleanShopifyDomain(s){
+  s=(s||'').trim().replace(/^https?:\/\//i,'').replace(/\/.*$/,'');
+  if(s&&!/\.myshopify\.com$/i.test(s))s+='.myshopify.com';
+  return s;
 }
 
 // Returns { name, email, phone, purchaseDate, warrantyMonths } on a match,
 // null if not configured/not found, or { error: '...' } on a real failure.
 async function lookupShopify(ordnum){
-  var store=process.env.SHOPIFY_STORE_DOMAIN, token=process.env.SHOPIFY_ADMIN_TOKEN;
+  var store=cleanShopifyDomain(process.env.SHOPIFY_STORE_DOMAIN), token=process.env.SHOPIFY_ADMIN_TOKEN;
   if(!store||!token||!ordnum)return null;
   try{
     var name=ordnum.trim();
@@ -74,7 +98,7 @@ async function lookupShopify(ordnum){
     if(!result.name&&!result.email&&!result.purchaseDate)return null;
     return result;
   }catch(e){
-    return {error:'Shopify request failed: '+String(e)};
+    return {error:'Shopify request failed: '+describeFetchError(e)};
   }
 }
 
