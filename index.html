@@ -1663,7 +1663,13 @@ async function askAI(){
         outcome:r.outcome,createdAt:r.createdAt,closedAt:r.closedAt,
         trackingStatus:(getTracking(r)||{}).statusText||null};
     });
-    var resp=await fetch('/api/ai-ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:question,data:data}),signal:controller.signal});
+    // The model has no built-in notion of "today" - without this, questions
+    // like "how many today/this week" get silently guessed from whatever
+    // date happens to be latest in the data, which is often wrong. Use the
+    // browser's local date so "today" matches what the person asking means.
+    var now=new Date();
+    var todayLocal=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+    var resp=await fetch('/api/ai-ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:question,data:data,today:todayLocal}),signal:controller.signal});
     var result=await resp.json();
     var box=document.getElementById(qId);
     if(!resp.ok||!result.answer){

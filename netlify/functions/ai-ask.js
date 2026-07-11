@@ -1,8 +1,11 @@
 // POST /api/ai-ask -> /.netlify/functions/ai-ask
-// Body: { question, data } - answers natural-language questions about repair
-// data using Gemini. `data` is a client-trimmed, PII-free snapshot of repair
-// records (no zendesk id/order number/serial/customer contact info - see the
-// askAI() function in index.html for exactly what's sent).
+// Body: { question, data, today } - answers natural-language questions about
+// repair data using Gemini. `data` is a client-trimmed, PII-free snapshot of
+// repair records (no zendesk id/order number/serial/customer contact info -
+// see the askAI() function in index.html for exactly what's sent). `today`
+// is the browser's local date (YYYY-MM-DD) - the model has no other way to
+// know what "today"/"this week" means, so this is required for accurate
+// date-relative answers; falls back to the server's UTC date if omitted.
 // Fails gracefully (answer:null + message) if GEMINI_API_KEY isn't set, so
 // the "Ask AI" page just explains itself instead of erroring until you add
 // a key - see SETUP.md.
@@ -25,10 +28,14 @@ var RESPONSE_SCHEMA = {
 };
 
 var SYSTEM_PROMPT = 'You are a data analyst answering questions about a device repair shop\'s repair-ticket records for Masjidal (an Islamic technology company - the devices are "Athan Frame" smart displays). ' +
-  'You will be given a JSON array of repair records and a question. Each record has: type (customer/general/amazon), ' +
+  'You will be given today\'s date, a JSON array of repair records, and a question. Each record has: type (customer/general/amazon), ' +
   'size (device size, e.g. 10", 14"), issue (free-text issue description), year (device year), android (Android version string), ' +
-  'status (current ticket status), outcome (how it was resolved), createdAt/closedAt (ISO timestamps), trackingStatus (shipping status if applicable, may be null). ' +
+  'status (current ticket status), outcome (how it was resolved), createdAt (when the ticket was opened, ISO timestamp), ' +
+  'closedAt (when the ticket was closed and its outcome - e.g. a replacement being sent - took effect, ISO timestamp, null if still open), ' +
+  'trackingStatus (shipping status if applicable, may be null). ' +
   'Answer accurately based ONLY on the data given - never invent numbers, and say so plainly if the data does not contain enough information to answer. ' +
+  'For date/time questions ("today", "this week", "past N days/months"), always compare against the "Today\'s date" value given to you, never guess it from the data - and use closedAt for questions about when something was sent/shipped/resolved/replaced, createdAt for questions about when a ticket was opened/created. ' +
+  'Count carefully and precisely: go through the records methodically rather than estimating, and if you provide a "table" breakdown, the individual values in it must sum to (or otherwise exactly match) any total number stated in the answer text - never let the answer text and the table disagree. ' +
   'Keep the answer concise and conversational (2-4 sentences). ' +
   'If the question asks for a breakdown, count, ranking, or comparison (e.g. "how many by X", "top issues", "android 6 vs 11", "which size has the most issues"), ' +
   'also fill in the "table" field with one row per category as {label, value} - value should be the count or metric as a string, sorted most-to-least relevant. ' +
@@ -44,6 +51,10 @@ exports.handler = async function (event) {
     var body = JSON.parse(event.body || '{}');
     var question = (body.question || '').trim();
     var data = Array.isArray(body.data) ? body.data : [];
+    // Prefer the browser's local date (matches what the person asking means
+    // by "today"); fall back to the server's UTC date if it wasn't sent or
+    // looks malformed.
+    var today = /^\d{4}-\d{2}-\d{2}$/.test(body.today || '') ? body.today : new Date().toISOString().slice(0, 10);
     if (!question) return json(400, { error: 'question is required' });
     if (question.length > 2000) return json(400, { error: 'Question is too long' });
     // Cap record count and trim long free-text fields - this is what's sent
@@ -62,16 +73,18 @@ exports.handler = async function (event) {
     // shut down by Google on 2026-06-01). Pin a specific version via
     // GEMINI_MODEL if you want stability over auto-updates instead.
     var primaryModel = process.env.GEMINI_MODEL || 'gemini-flash-latest';
-    var userPrompt = 'Repair records (JSON array, ' + data.length + ' records):\n' + JSON.stringify(data) + '\n\nQuestion: ' + question;
+    var userPrompt = 'Today\'s date: ' + today + '\n\nRepair records (JSON array, ' + data.length + ' records):\n' + JSON.stringify(data) + '\n\nQuestion: ' + question;
 
     function callGemini(model, skipThinkingConfig) {
-      var generationConfig = { responseMimeType: 'application/json', responseSchema: RESPONSE_SCHEMA, temperature: 0.2, maxOutputTokens: 1024 };
-      // This is simple data lookup/counting, not multi-step reasoning - the
-      // "thinking" step newer Gemini models do by default before answering
-      // adds real latency for no benefit here, so turn it off. Some model
-      // versions don't support this field, so we retry without it below if
-      // that's what caused a request to fail.
-      if (!skipThinkingConfig) generationConfig.thinkingConfig = { thinkingBudget: 0 };
+      var generationConfig = { responseMimeType: 'application/json', responseSchema: RESPONSE_SCHEMA, temperature: 0, maxOutputTokens: 1024 };
+      // Fully disabling "thinking" (budget 0) was fast but made counting/
+      // date-filtering questions unreliable - the model would eyeball the
+      // JSON array instead of actually working through it, producing
+      // confidently wrong counts. A small budget gives it room to verify a
+      // count before answering without the multi-second latency uncapped
+      // thinking had. Some model versions don't support this field, so we
+      // retry without it below if that's what caused a request to fail.
+      if (!skipThinkingConfig) generationConfig.thinkingConfig = { thinkingBudget: 1024 };
       var controller = new AbortController();
       var timeout = setTimeout(function () { controller.abort(); }, 20000);
       return fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + apiKey, {
