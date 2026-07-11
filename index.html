@@ -2298,14 +2298,29 @@ async function lookupCustomer(auto){
     var resp=await fetch('/api/lookup-customer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({zdid:zdid,ordnum:ordnum})});
     var data=await resp.json();
     if(!resp.ok||!data.found){
-      if(status)status.textContent=auto?'':(data.message||'No customer found for that ID/order.');
+      if(status)status.textContent=data.message||'No customer found for that ID/order.';
       if(!auto)toast(data.message||'No customer found for that ID/order.');
     }else{
       var nameEl=document.getElementById('f-custname'),emailEl=document.getElementById('f-custemail'),phoneEl=document.getElementById('f-custphone');
       if(nameEl&&!nameEl.value.trim()&&data.name)nameEl.value=data.name;
       if(emailEl&&!emailEl.value.trim()&&data.email)emailEl.value=data.email;
       if(phoneEl&&!phoneEl.value.trim()&&data.phone)phoneEl.value=data.phone;
-      if(status)status.textContent='Filled in from '+(data.source||'lookup')+' - review before saving.';
+      var statusMsg='Filled in from '+(data.source||'lookup')+' - review before saving.';
+      // Shopify order date -> warranty: 12 months standard, 24 if the order
+      // has a line item with "warranty" in the title (see lookup-customer.js
+      // - confirm/adjust that assumption for your actual product catalog).
+      if(data.purchaseDate&&data.warrantyMonths){
+        var wdEl=document.getElementById('f-warranty-date');
+        if(wdEl&&!wdEl.value)wdEl.value=data.purchaseDate;
+        if(warrantyVal===null||warrantyVal===undefined){
+          var expiry=new Date(data.purchaseDate);
+          expiry.setMonth(expiry.getMonth()+data.warrantyMonths);
+          var inWarranty=new Date()<=expiry;
+          setWarranty(inWarranty);
+          statusMsg+=' Warranty: '+(inWarranty?'active until ':'expired ')+expiry.toISOString().slice(0,10)+' ('+data.warrantyMonths+' mo from purchase) - please confirm.';
+        }
+      }
+      if(status)status.textContent=statusMsg;
     }
   }catch(e){
     console.error(e);
