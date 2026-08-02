@@ -157,39 +157,64 @@ so you keep your existing domain and don't have to redo DNS.
 
 ## 2. Turn on live package tracking (optional)
 
-Since you ship exclusively with UPS, the tracking feature prefers UPS's own
-free Tracking API — no AfterShip account or paid plan needed:
+The tracking feature pulls directly from UPS's and FedEx's own free
+tracking APIs — no AfterShip account, no paid plan, nothing to sign up for
+beyond a free developer account with each carrier:
 
+**UPS:**
 1. Go to [developer.ups.com](https://developer.ups.com) → sign up/log in →
    **Create an app**. Add the **Tracking API** product to it.
 2. Copy the app's **Client ID** and **Client Secret**.
 3. In Netlify: Site settings → Environment variables → add `UPS_CLIENT_ID`
-   and `UPS_CLIENT_SECRET` → redeploy (Deploys → Trigger deploy).
-4. That's it — saving a UPS tracking number now automatically looks up
-   status via UPS directly, shown in the ticket detail view, refreshed by
-   the "Refresh Status" button and the daily scheduled sweep.
+   and `UPS_CLIENT_SECRET`.
 
-**If UPS tracking isn't working**: open the ticket detail view and check the
-message under the tracking status — it now shows the real reason instead of
-a generic error (bad credentials, a UPS app still awaiting production
-approval, etc.), so you don't need to check Netlify function logs. The most
-common cause: a UPS Developer app starts out sandboxed and needs UPS to
-approve it for **production** access to the Tracking API before
-`onlinetools.ups.com` (the production endpoint this app uses) will accept
-requests from it — check your app's status at developer.ups.com if you're
+**FedEx:**
+1. Go to [developer.fedex.com](https://developer.fedex.com) → sign up/log
+   in → create a project, and add the **Track API** to it.
+2. Copy the project's **API Key** (Client ID) and **Secret Key** (Client
+   Secret).
+3. In Netlify: Site settings → Environment variables → add
+   `FEDEX_CLIENT_ID` and `FEDEX_CLIENT_SECRET`.
+
+Then **redeploy** (Deploys → Trigger deploy). That's it — saving a UPS or
+FedEx tracking number now automatically looks up live status directly from
+that carrier, shown in the ticket detail view and the new **In Transit**
+page (left sidebar), refreshed by the "Refresh Status"/"Refresh All"
+buttons and the daily scheduled sweep. Only need one of these set up if you
+only ship one of the two carriers.
+
+**If tracking isn't working**: open the ticket detail view (or the In
+Transit page) and check the message under the tracking status — it shows
+the real reason instead of a generic error (bad credentials, an app still
+awaiting production approval, etc.), so you don't need to check Netlify
+function logs. The most common cause for either carrier: a developer app
+starts out sandboxed and needs to be approved for **production** access to
+the tracking product before the production API will accept requests from
+it — check your app's status on the carrier's developer portal if you're
 seeing an authentication error.
 
-**Limitation to know about**: UPS's free API doesn't offer an easy webhook
-for real-time push updates (that requires UPS's separate Quantum View
-enterprise product), so UPS-tracked shipments only update when someone
-clicks "Refresh Status" or when the daily sweep runs (once/day) — not
-instantly the moment UPS's system updates. For a repair shop's volume this
-is normally fine; say the word if you want tighter timing later.
+**Limitation to know about**: neither carrier's free API offers an easy
+webhook for real-time push updates, so tracked shipments only update when
+someone clicks "Refresh Status"/"Refresh All" or when the daily sweep runs
+(once/day) — not instantly the moment the carrier's system updates. For a
+repair shop's volume this is normally fine; say the word if you want
+tighter timing later.
 
-If you ever also want AfterShip as a fallback for other carriers, the code
-already supports it: set `AFTERSHIP_API_KEY`, and optionally
-`AFTERSHIP_WEBHOOK_SECRET` for near-real-time updates on those. Not required
-for UPS.
+If you ever also want AfterShip as a fallback for other carriers (USPS,
+DHL, etc.), the code already supports it: set `AFTERSHIP_API_KEY`, and
+optionally `AFTERSHIP_WEBHOOK_SECRET` for near-real-time updates on those.
+Not required for UPS/FedEx.
+
+### In Transit page
+
+A dedicated **In Transit** view (left sidebar, under Completed) lists every
+closed repair whose package tracking hasn't hit "Delivered" yet — carrier,
+tracking number, live status, and estimated delivery, with a "Refresh All"
+button to force-check everything on the list at once. A repair drops off
+this list automatically the moment its tracking flips to Delivered (no
+manual step needed) — it stays visible in Completed Repairs either way,
+this is just a focused view for "what's still on its way back to a
+customer right now."
 
 ### Scheduled function note
 

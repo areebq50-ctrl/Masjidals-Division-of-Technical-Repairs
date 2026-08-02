@@ -1,14 +1,15 @@
 // POST /api/track-create -> /.netlify/functions/track-create (see netlify.toml redirect)
 // Body: { repairId, carrier, number, notes } — registers a shipment for live
 // tracking and stores the result on the repair's `tracking` column.
-// Uses UPS's own free Tracking API when the carrier is UPS (requires
-// UPS_CLIENT_ID/UPS_CLIENT_SECRET - no paid plan needed); UPS is never
-// silently skipped in favor of AfterShip - a real UPS failure is reported
-// back as `error`/`tracking.lastError` instead. Non-UPS carriers use
-// AfterShip (AFTERSHIP_API_KEY) if configured. With nothing configured for
-// the given carrier, this just no-ops and the manual tracking info already
-// saved by the client stays exactly as-is.
-const { sbPatch, CARRIER_SLUGS, mapStatus, trackUpsDirect, json } = require('./utils/shared');
+// Uses UPS/FedEx's own free Tracking APIs directly when the carrier is one
+// of those (requires UPS_CLIENT_ID/UPS_CLIENT_SECRET or
+// FEDEX_CLIENT_ID/FEDEX_CLIENT_SECRET - no paid plan needed); a carrier with
+// a direct integration is never silently skipped in favor of AfterShip - a
+// real failure is reported back as `error`/`tracking.lastError` instead.
+// Other carriers use AfterShip (AFTERSHIP_API_KEY) if configured. With
+// nothing configured for the given carrier, this just no-ops and the manual
+// tracking info already saved by the client stays exactly as-is.
+const { sbPatch, CARRIER_SLUGS, mapStatus, trackDirect, DIRECT_TRACKERS, json } = require('./utils/shared');
 
 exports.handler = async function (event) {
   if (event.httpMethod !== 'POST') return json(405, { error: 'Method not allowed' });
@@ -25,34 +26,34 @@ exports.handler = async function (event) {
       checkpoints: [], slug: null, registered: false, lastError: null
     };
 
-    // Preferred path: UPS direct (free). A thrown error here is a real
-    // failure (bad credentials, UPS app not approved, bad tracking number,
-    // etc.) - surface it instead of silently falling through, so it doesn't
-    // masquerade as "AfterShip isn't configured" when AfterShip was never
-    // the intended path at all.
-    if (carrier === 'UPS') {
+    // Preferred path: direct carrier API (free, UPS/FedEx). A thrown error
+    // here is a real failure (bad credentials, app not approved, bad
+    // tracking number, etc.) - surface it instead of silently falling
+    // through, so it doesn't masquerade as "AfterShip isn't configured"
+    // when AfterShip was never the intended path at all.
+    if (DIRECT_TRACKERS[carrier]) {
       try {
-        var upsResult = await trackUpsDirect(number);
-        if (upsResult) {
-          var updatedUps = Object.assign({}, base, {
-            slug: 'ups-direct',
-            status: upsResult.statusTag,
-            statusText: upsResult.statusText,
-            statusColor: upsResult.statusColor,
-            expectedDelivery: upsResult.expectedDelivery,
+        var direct = await trackDirect(carrier, number);
+        if (direct) {
+          var updatedDirect = Object.assign({}, base, {
+            slug: direct.slug,
+            status: direct.result.statusTag,
+            statusText: direct.result.statusText,
+            statusColor: direct.result.statusColor,
+            expectedDelivery: direct.result.expectedDelivery,
             lastCheckedAt: new Date().toISOString(),
-            checkpoints: (upsResult.checkpoints || []).slice(-10).reverse(),
+            checkpoints: (direct.result.checkpoints || []).slice(-10).reverse(),
             registered: true,
-            deliveredAt: upsResult.statusTag === 'Delivered' ? new Date().toISOString() : null
+            deliveredAt: direct.result.statusTag === 'Delivered' ? new Date().toISOString() : null
           });
-          await sbPatch('repairs', repairId, { tracking: JSON.stringify(updatedUps), updatedAt: new Date().toISOString() });
-          return json(200, { ok: true, registered: true, tracking: updatedUps });
+          await sbPatch('repairs', repairId, { tracking: JSON.stringify(updatedDirect), updatedAt: new Date().toISOString() });
+          return json(200, { ok: true, registered: true, tracking: updatedDirect });
         }
       } catch (e) {
-        console.error('UPS direct failed', e);
-        var upsFailedBase = Object.assign({}, base, { lastError: e.message });
-        await sbPatch('repairs', repairId, { tracking: JSON.stringify(upsFailedBase), updatedAt: new Date().toISOString() });
-        return json(200, { ok: true, registered: false, tracking: upsFailedBase, error: e.message });
+        console.error(carrier + ' direct tracking failed', e);
+        var directFailedBase = Object.assign({}, base, { lastError: e.message });
+        await sbPatch('repairs', repairId, { tracking: JSON.stringify(directFailedBase), updatedAt: new Date().toISOString() });
+        return json(200, { ok: true, registered: false, tracking: directFailedBase, error: e.message });
       }
     }
 

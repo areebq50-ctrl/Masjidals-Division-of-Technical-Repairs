@@ -1,9 +1,10 @@
 // POST /api/track-refresh -> /.netlify/functions/track-refresh
 // Body: { repairId } — on-demand refresh, used by the "Refresh Status" button
-// in the ticket detail view. Uses UPS direct (free) whenever the tracking
-// record's carrier is UPS (even if a previous attempt failed to register -
-// worth retrying, e.g. after fixing UPS credentials), otherwise AfterShip.
-const { sbGet, sbPatch, sbPost, mapStatus, trackUpsDirect, json } = require('./utils/shared');
+// in the ticket detail view. Uses the direct carrier API (free, UPS/FedEx)
+// whenever the tracking record's carrier has one (even if a previous
+// attempt failed to register - worth retrying, e.g. after fixing
+// credentials), otherwise AfterShip.
+const { sbGet, sbPatch, sbPost, mapStatus, trackDirect, DIRECT_TRACKERS, json } = require('./utils/shared');
 
 exports.handler = async function (event) {
   if (event.httpMethod !== 'POST') return json(405, { error: 'Method not allowed' });
@@ -17,34 +18,35 @@ exports.handler = async function (event) {
     if (!repair || !repair.tracking) return json(404, { error: 'No tracking on this repair' });
 
     var tr = typeof repair.tracking === 'string' ? JSON.parse(repair.tracking) : repair.tracking;
-    // Retry on carrier, not on tr.slug - if UPS failed the first time (bad
-    // creds, app not yet approved, etc.) slug never got set to 'ups-direct',
-    // so gating on slug here would permanently give up on it even after the
+    var hasDirect = !!DIRECT_TRACKERS[tr.carrier];
+    // Retry on carrier, not on tr.slug - if the direct API failed the first
+    // time (bad creds, app not yet approved, etc.) slug never got set, so
+    // gating on slug here would permanently give up on it even after the
     // underlying problem is fixed.
-    if (tr.carrier !== 'UPS' && !tr.slug) return json(200, { ok: true, registered: false, message: 'Not registered for live tracking yet' });
+    if (!hasDirect && !tr.slug) return json(200, { ok: true, registered: false, message: 'Not registered for live tracking yet' });
 
     var wasDelivered = tr.status === 'Delivered';
     var updated;
 
-    if (tr.carrier === 'UPS') {
-      var upsResult;
+    if (hasDirect) {
+      var direct;
       try {
-        upsResult = await trackUpsDirect(tr.number);
+        direct = await trackDirect(tr.carrier, tr.number);
       } catch (e) {
-        var upsFailedTr = Object.assign({}, tr, { lastError: e.message });
-        await sbPatch('repairs', repairId, { tracking: JSON.stringify(upsFailedTr), updatedAt: new Date().toISOString() });
-        return json(502, { error: 'UPS lookup failed', detail: e.message });
+        var directFailedTr = Object.assign({}, tr, { lastError: e.message });
+        await sbPatch('repairs', repairId, { tracking: JSON.stringify(directFailedTr), updatedAt: new Date().toISOString() });
+        return json(502, { error: tr.carrier + ' lookup failed', detail: e.message });
       }
-      if (!upsResult) return json(200, { ok: true, registered: false, message: 'UPS tracking is not configured yet - add UPS_CLIENT_ID/UPS_CLIENT_SECRET in Netlify.' });
+      if (!direct) return json(200, { ok: true, registered: false, message: tr.carrier + ' tracking is not configured yet - see SETUP.md.' });
       updated = Object.assign({}, tr, {
-        slug: 'ups-direct', registered: true, lastError: null,
-        status: upsResult.statusTag,
-        statusText: upsResult.statusText,
-        statusColor: upsResult.statusColor,
-        expectedDelivery: upsResult.expectedDelivery || tr.expectedDelivery,
+        slug: direct.slug, registered: true, lastError: null,
+        status: direct.result.statusTag,
+        statusText: direct.result.statusText,
+        statusColor: direct.result.statusColor,
+        expectedDelivery: direct.result.expectedDelivery || tr.expectedDelivery,
         lastCheckedAt: new Date().toISOString(),
-        checkpoints: (upsResult.checkpoints || []).slice(-10).reverse(),
-        deliveredAt: upsResult.statusTag === 'Delivered' ? (tr.deliveredAt || new Date().toISOString()) : tr.deliveredAt
+        checkpoints: (direct.result.checkpoints || []).slice(-10).reverse(),
+        deliveredAt: direct.result.statusTag === 'Delivered' ? (tr.deliveredAt || new Date().toISOString()) : tr.deliveredAt
       });
     } else {
       var apiKey = process.env.AFTERSHIP_API_KEY;

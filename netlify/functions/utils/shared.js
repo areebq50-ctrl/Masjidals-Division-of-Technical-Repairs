@@ -162,4 +162,104 @@ async function trackUpsDirect(trackingNumber) {
   };
 }
 
-module.exports = { sbGet, sbPatch, sbPost, CARRIER_SLUGS, STATUS_MAP, mapStatus, json, trackUpsDirect, describeFetchError, SUPABASE_URL, SUPABASE_KEY };
+// --- FedEx direct tracking (free FedEx Track API - no AfterShip needed) ---
+// Same shape/contract as the UPS functions above: returns null only when
+// FEDEX_CLIENT_ID/FEDEX_CLIENT_SECRET aren't set, throws on any real
+// failure.
+async function getFedexToken() {
+  var id = process.env.FEDEX_CLIENT_ID, secret = process.env.FEDEX_CLIENT_SECRET;
+  if (!id || !secret) return null;
+  var r;
+  try {
+    r = await fetch('https://apis.fedex.com/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'grant_type=client_credentials&client_id=' + encodeURIComponent(id) + '&client_secret=' + encodeURIComponent(secret)
+    });
+  } catch (e) {
+    throw new Error('FedEx authentication request failed: ' + describeFetchError(e));
+  }
+  if (!r.ok) {
+    var errText = await r.text();
+    throw new Error('FedEx authentication failed (' + r.status + '): ' + errText.substring(0, 300));
+  }
+  var data = await r.json();
+  if (!data.access_token) throw new Error('FedEx authentication succeeded but returned no access token.');
+  return data.access_token;
+}
+
+const FEDEX_STATUS_MAP = {
+  DL: { label: 'Delivered', color: 'green' },
+  IT: { label: 'In Transit', color: 'blue' },
+  OD: { label: 'Out for Delivery', color: 'purple' },
+  PU: { label: 'Picked Up', color: 'blue' },
+  DE: { label: 'Exception', color: 'red' },
+  CA: { label: 'Cancelled', color: 'red' }
+};
+
+// Returns the same normalized shape trackUpsDirect() does. Returns null
+// only when FedEx isn't configured at all; throws on any real failure (bad
+// credentials, network issue, bad tracking number, etc.).
+async function trackFedexDirect(trackingNumber) {
+  var token = await getFedexToken();
+  if (!token) return null;
+  var r;
+  try {
+    r = await fetch('https://apis.fedex.com/track/v1/trackingnumbers', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', 'X-locale': 'en_US' },
+      body: JSON.stringify({ trackingInfo: [{ trackingNumberInfo: { trackingNumber: trackingNumber } }], includeDetailedScans: true })
+    });
+  } catch (e) {
+    throw new Error('FedEx tracking request failed: ' + describeFetchError(e));
+  }
+  if (!r.ok) {
+    var errText = await r.text();
+    throw new Error('FedEx tracking lookup failed (' + r.status + '): ' + errText.substring(0, 300));
+  }
+  var data = await r.json();
+  var trackResult = data.output && data.output.completeTrackResults && data.output.completeTrackResults[0] &&
+    data.output.completeTrackResults[0].trackResults && data.output.completeTrackResults[0].trackResults[0];
+  if (!trackResult) throw new Error('FedEx returned no tracking data for "' + trackingNumber + '" - double check the tracking number is correct.');
+  if (trackResult.error) throw new Error('FedEx: ' + (trackResult.error.message || 'tracking number not found'));
+
+  var latest = trackResult.latestStatusDetail || {};
+  var mapped = FEDEX_STATUS_MAP[latest.code] || { label: latest.statusByLocale || latest.description || 'Unknown', color: 'blue' };
+
+  var dateAndTimes = trackResult.dateAndTimes || [];
+  var estDelivery = dateAndTimes.find(function (d) { return d.type === 'ESTIMATED_DELIVERY'; });
+
+  var checkpoints = (trackResult.scanEvents || []).map(function (ev) {
+    var loc = ev.scanLocation ? [ev.scanLocation.city, ev.scanLocation.stateOrProvinceCode, ev.scanLocation.countryCode].filter(Boolean).join(', ') : '';
+    return { message: ev.eventDescription || '', city: loc, checkpoint_time: ev.date || null };
+  });
+
+  return {
+    statusTag: latest.code === 'DL' ? 'Delivered' : mapped.label,
+    statusText: mapped.label,
+    statusColor: mapped.color,
+    expectedDelivery: estDelivery ? estDelivery.dateTime : null,
+    checkpoints: checkpoints
+  };
+}
+
+// Single dispatcher so callers don't need their own per-carrier branching -
+// add a new free direct-tracking carrier by adding one entry here.
+const DIRECT_TRACKERS = {
+  UPS: { slug: 'ups-direct', fn: trackUpsDirect },
+  FedEx: { slug: 'fedex-direct', fn: trackFedexDirect }
+};
+
+// Returns null if this carrier has no direct integration at all (falls back
+// to AfterShip) or if it does but isn't configured. Throws on a real
+// failure. On success returns { slug, result } where `result` is the
+// normalized tracking shape trackUpsDirect()/trackFedexDirect() return.
+async function trackDirect(carrier, number) {
+  var entry = DIRECT_TRACKERS[carrier];
+  if (!entry) return null;
+  var result = await entry.fn(number);
+  if (!result) return null;
+  return { slug: entry.slug, result: result };
+}
+
+module.exports = { sbGet, sbPatch, sbPost, CARRIER_SLUGS, STATUS_MAP, mapStatus, json, trackDirect, DIRECT_TRACKERS, describeFetchError, SUPABASE_URL, SUPABASE_KEY };

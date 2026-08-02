@@ -427,6 +427,9 @@ input:checked+.slider:before{transform:translateX(16px)}
       <div class="nav-item hide-support" id="nav-completed" onclick="showPage('completed')">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>Completed
       </div>
+      <div class="nav-item hide-support" id="nav-intransit" onclick="showPage('intransit')">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 8h-3V4H3c-1.1 0-2 .9-2 2v11h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3-4zM6 18.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm13.5-9l1.96 2.5H17V9.5h2.5zM18 18.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>In Transit
+      </div>
       <div class="nav-item show-support-only hidden" id="nav-supportview" onclick="showPage('supportview')">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>Customer Repairs
       </div>
@@ -574,6 +577,23 @@ input:checked+.slider:before{transform:translateX(16px)}
           <div class="th">Ticket</div><div class="th">Device / ID</div><div class="th">Type</div><div class="th">Outcome</div><div class="th">Work Done</div><div class="th">Closed</div><div class="th"></div>
         </div>
         <div id="completedBody"></div>
+      </div>
+    </div>
+
+    <div class="content hidden" id="page-intransit">
+      <div style="font-size:15px;font-weight:700;margin-bottom:4px">In Transit</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:16px">Closed repairs with a package still on its way back to the customer. Drops off this list automatically once marked Delivered.</div>
+      <div class="filters">
+        <div class="sw"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+          <input class="search-input" id="transitSearch" placeholder="Search ZD ID, tracking #…" oninput="renderInTransit()">
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="refreshAllInTransit()" id="transitRefreshAllBtn">Refresh All</button>
+      </div>
+      <div class="table-wrap">
+        <div class="t-head" style="grid-template-columns:90px 1fr 130px 160px 120px">
+          <div class="th">Ticket</div><div class="th">Device / ID</div><div class="th">Carrier</div><div class="th">Status</div><div class="th">Est. Delivery</div>
+        </div>
+        <div id="transitBody"></div>
       </div>
     </div>
 
@@ -1385,7 +1405,7 @@ function showPage(p){
   document.querySelectorAll('.nav-item').forEach(function(el){el.classList.remove('active');});
   var pg=document.getElementById('page-'+p);if(pg)pg.classList.remove('hidden');
   var nv=document.getElementById('nav-'+p);if(nv)nv.classList.add('active');
-  var titles={dashboard:'Dashboard',allrepairs:'All Repairs',myrepairs:'Customer Repairs',myrepairs2:'My Repairs',completed:'Completed Repairs',supportview:'Customer Repairs',stats:'Staff Stats',askai:'Masjidal AI',employees:'Employees',activity:'Activity Log',settings:'Settings'};
+  var titles={dashboard:'Dashboard',allrepairs:'All Repairs',myrepairs:'Customer Repairs',myrepairs2:'My Repairs',completed:'Completed Repairs',intransit:'In Transit',supportview:'Customer Repairs',stats:'Staff Stats',askai:'Masjidal AI',employees:'Employees',activity:'Activity Log',settings:'Settings'};
   document.getElementById('topbarTitle').textContent=titles[p]||p;
   closeSidebar();
   if(p==='dashboard')renderDashboard();
@@ -1393,6 +1413,7 @@ function showPage(p){
   else if(p==='myrepairs')renderMyRepairs();
   else if(p==='myrepairs2')renderMyRepairs2();
   else if(p==='completed')renderCompleted();
+  else if(p==='intransit')renderInTransit();
   else if(p==='supportview'){loadActivity();renderSupportView();}
   else if(p==='stats')renderStats();
   else if(p==='askai')initAIChat();
@@ -1407,6 +1428,7 @@ function refreshPage(){
   else if(currentPage==='myrepairs')renderMyRepairs();
   else if(currentPage==='myrepairs2')renderMyRepairs2();
   else if(currentPage==='completed')renderCompleted();
+  else if(currentPage==='intransit')renderInTransit();
   else if(currentPage==='supportview')renderSupportView();
   else if(currentPage==='stats')renderStats();
 }
@@ -1711,6 +1733,58 @@ function renderCompleted(){
   var el=document.getElementById('completedBody');if(!el)return;
   if(!d.length){el.innerHTML='<div class="empty"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg><p>No completed repairs</p></div>';return;}
   el.innerHTML=d.map(function(r){var wd=r.repairsDone?(r.repairsDone.length>35?r.repairsDone.substring(0,35)+'...':r.repairsDone):'--';return'<div class="t-row" style="grid-template-columns:90px 1fr 100px 120px 140px 100px 70px" data-id="'+r.id+'" onclick="openDetail(this.dataset.id)"><div class="tid">'+r.ticket+'</div><div class="dcell"><strong>'+repLabel(r)+'</strong><span>'+repSub(r)+'</span></div><div>'+typeBadge(r.type)+'</div><div class="outcome-cell">'+(outcomeBadge(r.outcome)||'<span class="badge b-gray">--</span>')+trackingPill(r,true)+'</div><div class="dcel" title="'+(r.repairsDone||'')+'">'+wd+'</div><div class="dcel">'+fmtShort(r.closedAt)+'</div><div class="row-acts" onclick="event.stopPropagation()">'+(canDeleteTicket(r)?'<button class="icon-btn del" onclick="delRep(_pid(this))" title="Delete"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button>':'')+'</div></div>';}).join('');
+}
+
+// Closed repairs whose package is still in transit - drops off automatically
+// once tracking flips to Delivered (the tracking data itself is kept fresh
+// by "Refresh Status"/this page's "Refresh All" and the daily cron sweep).
+function inTransitRepairs(){
+  return _repairs.filter(function(r){
+    if(r.status!=='Closed'||!canSeeRep(r))return false;
+    var tr=getTracking(r);
+    return !!(tr&&tr.number&&tr.status!=='Delivered');
+  });
+}
+function renderInTransit(){
+  if(!currentUser)return;
+  var search=(document.getElementById('transitSearch')||{value:''}).value.toLowerCase();
+  var d=inTransitRepairs();
+  if(search)d=d.filter(function(r){
+    var tr=getTracking(r)||{};
+    return((r.ticket||'')+' '+(r.zdid||'')+' '+(r.ordnum||'')+' '+(tr.number||'')).toLowerCase().indexOf(search)!==-1;
+  });
+  var el=document.getElementById('transitBody');if(!el)return;
+  if(!d.length){el.innerHTML='<div class="empty"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 8h-3V4H3c-1.1 0-2 .9-2 2v11h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3-4z"/></svg><p>Nothing in transit</p><span>Packages show up here once tracking is added, and drop off automatically once delivered.</span></div>';return;}
+  el.innerHTML=d.map(function(r){
+    var tr=getTracking(r)||{};
+    var badgeColor=tr.lastError?'b-red':(tr.statusColor?('b-'+tr.statusColor):'b-blue');
+    var statusLabel=tr.lastError?'Tracking error':(tr.statusText||'Not yet tracked live');
+    return'<div class="t-row" style="grid-template-columns:90px 1fr 130px 160px 120px" data-id="'+r.id+'" onclick="openDetail(this.dataset.id)">'+
+      '<div class="tid">'+r.ticket+'</div>'+
+      '<div class="dcell"><strong>'+repLabel(r)+'</strong><span>'+repSub(r)+'</span></div>'+
+      '<div class="dcel">'+(tr.carrier||'')+' &middot; '+(tr.number||'')+'</div>'+
+      '<div><span class="badge '+badgeColor+'" title="'+(tr.lastError||'').replace(/"/g,'&quot;')+'">'+statusLabel+'</span></div>'+
+      '<div class="dcel">'+(tr.expectedDelivery?fmtShort(tr.expectedDelivery):'--')+'</div>'+
+      '</div>';
+  }).join('');
+}
+async function refreshAllInTransit(){
+  var btn=document.getElementById('transitRefreshAllBtn');
+  var ids=inTransitRepairs().map(function(r){return r.id;});
+  if(!ids.length){toast('Nothing to refresh');return;}
+  if(btn){btn.disabled=true;btn.textContent='Refreshing…';}
+  var ok=0,fail=0;
+  for(var i=0;i<ids.length;i++){
+    try{
+      var resp=await fetch('/api/track-refresh',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({repairId:ids[i]})});
+      var data=await resp.json();
+      if(resp.ok&&data.registered!==false)ok++;else fail++;
+    }catch(e){fail++;}
+  }
+  await doLoad();
+  renderInTransit();
+  if(btn){btn.disabled=false;btn.textContent='Refresh All';}
+  toast('Refreshed '+ok+' shipment'+(ok===1?'':'s')+(fail?' ('+fail+' failed)':''));
 }
 
 function openDetail(id){

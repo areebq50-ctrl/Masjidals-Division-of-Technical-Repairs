@@ -1,18 +1,22 @@
 // Scheduled Netlify Function (see netlify.toml "schedule") — runs daily.
 // Re-checks every repair with an active (non-delivered) live tracking record
-// - UPS direct when the carrier is UPS (retried even if a previous attempt
-// failed to register), AfterShip otherwise - in case a webhook was missed
-// or never configured. This is what guarantees a shipment keeps getting
-// checked all the way until it's marked Delivered.
+// - the direct carrier API (free, UPS/FedEx) when the carrier has one
+// (retried even if a previous attempt failed to register), AfterShip
+// otherwise - in case a webhook was missed or never configured. This is
+// what guarantees a shipment keeps getting checked all the way until it's
+// marked Delivered.
 // Netlify blocks triggering scheduled functions via a direct URL in
 // production - to run this on demand, use Netlify -> Functions -> track-cron
 // -> "Run now" in the dashboard instead.
-const { sbGet, sbPatch, sbPost, mapStatus, trackUpsDirect, json } = require('./utils/shared');
+const { sbGet, sbPatch, sbPost, mapStatus, trackDirect, DIRECT_TRACKERS, json } = require('./utils/shared');
 
 exports.handler = async function () {
   var hasUps = !!(process.env.UPS_CLIENT_ID && process.env.UPS_CLIENT_SECRET);
+  var hasFedex = !!(process.env.FEDEX_CLIENT_ID && process.env.FEDEX_CLIENT_SECRET);
   var hasAfterShip = !!process.env.AFTERSHIP_API_KEY;
-  if (!hasUps && !hasAfterShip) return json(200, { ok: true, skipped: 'Live tracking not configured yet' });
+  if (!hasUps && !hasFedex && !hasAfterShip) return json(200, { ok: true, skipped: 'Live tracking not configured yet' });
+
+  var directConfigured = { UPS: hasUps, FedEx: hasFedex };
 
   try {
     var repairs = await sbGet('repairs', 'order=updatedAt.desc&limit=1000');
@@ -20,9 +24,9 @@ exports.handler = async function () {
       if (!r.tracking) return false;
       var tr;
       try { tr = typeof r.tracking === 'string' ? JSON.parse(r.tracking) : r.tracking; } catch (e) { return false; }
-      // Include UPS-carrier repairs even if slug never got set (a failed
+      // Include direct-carrier repairs even if slug never got set (a failed
       // registration shouldn't permanently exclude it from retries).
-      return !!(tr && (tr.slug || tr.carrier === 'UPS') && tr.status !== 'Delivered');
+      return !!(tr && (tr.slug || DIRECT_TRACKERS[tr.carrier]) && tr.status !== 'Delivered');
     });
 
     var results = [];
@@ -33,25 +37,25 @@ exports.handler = async function () {
       try {
         var updated;
 
-        if (tr.carrier === 'UPS') {
-          if (!hasUps) { results.push({ id: r.id, skipped: 'UPS not configured' }); continue; }
-          var upsResult;
+        if (DIRECT_TRACKERS[tr.carrier]) {
+          if (!directConfigured[tr.carrier]) { results.push({ id: r.id, skipped: tr.carrier + ' not configured' }); continue; }
+          var direct;
           try {
-            upsResult = await trackUpsDirect(tr.number);
+            direct = await trackDirect(tr.carrier, tr.number);
           } catch (e) {
             await sbPatch('repairs', r.id, { tracking: JSON.stringify(Object.assign({}, tr, { lastError: e.message })), updatedAt: new Date().toISOString() });
             results.push({ id: r.id, error: e.message });
             continue;
           }
           updated = Object.assign({}, tr, {
-            slug: 'ups-direct', registered: true, lastError: null,
-            status: upsResult.statusTag,
-            statusText: upsResult.statusText,
-            statusColor: upsResult.statusColor,
-            expectedDelivery: upsResult.expectedDelivery || tr.expectedDelivery,
+            slug: direct.slug, registered: true, lastError: null,
+            status: direct.result.statusTag,
+            statusText: direct.result.statusText,
+            statusColor: direct.result.statusColor,
+            expectedDelivery: direct.result.expectedDelivery || tr.expectedDelivery,
             lastCheckedAt: new Date().toISOString(),
-            checkpoints: (upsResult.checkpoints || []).slice(-10).reverse(),
-            deliveredAt: upsResult.statusTag === 'Delivered' ? (tr.deliveredAt || new Date().toISOString()) : tr.deliveredAt
+            checkpoints: (direct.result.checkpoints || []).slice(-10).reverse(),
+            deliveredAt: direct.result.statusTag === 'Delivered' ? (tr.deliveredAt || new Date().toISOString()) : tr.deliveredAt
           });
         } else {
           if (!hasAfterShip) { results.push({ id: r.id, skipped: 'AfterShip not configured' }); continue; }
