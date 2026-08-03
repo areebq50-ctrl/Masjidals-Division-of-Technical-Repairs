@@ -110,11 +110,11 @@ change I can make whenever you want it.
   "Refresh Status" button. Completed Repairs rows also show a small
   tracking pill, and there's a dedicated **In Transit** page for everything
   still on its way back to a customer.
-  - Status updates automatically two ways: a daily scheduled function
-    (always on once any carrier is configured) and, if you set up the
-    optional Shippo webhook, near-real-time updates on Shippo-tracked
-    shipments. When a package is marked Delivered, an activity-log entry is
-    added automatically.
+  - Status updates automatically two ways: an hourly scheduled sweep
+    (always on once any carrier is configured, no one needs to click
+    anything) and, if you set up the optional Shippo webhook, near-instant
+    updates on Shippo-tracked shipments. When a package is marked
+    Delivered, an activity-log entry is added automatically.
   - **This is fully optional.** Until you add carrier credentials (see
     below), everything works exactly like before — tracking numbers are
     stored manually with no live status, no errors, no broken UI.
@@ -128,7 +128,7 @@ change I can make whenever you want it.
 The GitHub repo (`areebq50-ctrl/Masjidals-Division-of-Technical-Repairs`) was
 empty before this change, so it's unlikely your current live site is
 git-connected to it yet. To get Functions (needed for live tracking) and the
-scheduled daily sweep working, connect the repo via Git rather than a manual
+scheduled hourly sweep working, connect the repo via Git rather than a manual
 drag-and-drop upload — drag-and-drop deploys don't reliably build serverless
 functions.
 
@@ -189,10 +189,12 @@ free too, no shipping labels need to be purchased through them.
 Then **redeploy** (Deploys → Trigger deploy). That's it — saving a tracking
 number now automatically looks up live status (UPS/FedEx direct if that's
 the carrier, Shippo otherwise), shown in the ticket detail view and the new
-**In Transit** page (left sidebar), refreshed by the "Refresh
-Status"/"Refresh All" buttons and the daily scheduled sweep. You only need
-to set up the carriers you actually ship with — e.g. if you only ship
-UPS/FedEx, Shippo isn't needed at all, and vice versa.
+**In Transit** page (left sidebar). It also keeps itself updated
+automatically from there — no one needs to click "Refresh" — via an hourly
+scheduled sweep, on top of the manual "Refresh Status"/"Refresh All"
+buttons for whenever you want it checked immediately. You only need to set
+up the carriers you actually ship with — e.g. if you only ship UPS/FedEx,
+Shippo isn't needed at all, and vice versa.
 
 **If tracking isn't working**: open the ticket detail view (or the In
 Transit page) and check the message under the tracking status — it shows
@@ -204,14 +206,14 @@ developer app starts out sandboxed and needs to be approved for
 will accept requests from it — check your app's status on the carrier's
 developer portal if you're seeing an authentication error.
 
-**Limitation to know about**: UPS/FedEx's free APIs don't offer an easy
-webhook for real-time push updates, so UPS/FedEx-tracked shipments only
-update when someone clicks "Refresh Status"/"Refresh All" or when the daily
-sweep runs (once/day) — not instantly the moment the carrier's system
-updates. Shippo-tracked shipments (USPS/DHL) CAN get near-real-time updates
-if you set up the optional webhook (see `SHIPPO_WEBHOOK_SECRET` in
-`.env.example`); otherwise they're on the same once/day sweep. For a repair
-shop's volume this is normally fine either way.
+**Limitation to know about**: UPS/FedEx's free APIs don't offer a webhook
+for instant push updates, so UPS/FedEx-tracked shipments update at most
+hourly (the scheduled sweep) unless someone clicks "Refresh
+Status"/"Refresh All" for something more urgent. Shippo-tracked shipments
+(USPS/DHL) CAN get near-instant updates if you set up the optional webhook
+(see `SHIPPO_WEBHOOK_SECRET` in `.env.example`); otherwise they're on the
+same hourly sweep. Want a tighter interval than hourly? Just say so — it's
+a one-line change.
 
 ### In Transit page
 

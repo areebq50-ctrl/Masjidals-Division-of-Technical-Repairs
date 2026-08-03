@@ -1,5 +1,5 @@
 // POST /api/track-webhook -> /.netlify/functions/track-webhook
-// Webhook receiver for Shippo's "track_updated" event. Optional - the daily
+// Webhook receiver for Shippo's "track_updated" event. Optional - the hourly
 // scheduled sweep (track-cron.js) and the "Refresh Status"/"Refresh All"
 // buttons already keep tracking current, this just makes updates near-
 // instant instead of waiting for those. Configure this URL

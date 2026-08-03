@@ -1,4 +1,4 @@
-// Scheduled Netlify Function (see netlify.toml "schedule") — runs daily.
+// Scheduled Netlify Function (see netlify.toml "schedule") — runs hourly.
 // Re-checks every repair with an active (non-delivered) live tracking record
 // - the direct carrier API (free, UPS/FedEx) when the carrier has one
 // (retried even if a previous attempt failed to register), Shippo (free,

@@ -1738,7 +1738,7 @@ function renderCompleted(){
 var IN_TRANSIT_MAX_DAYS=7;
 // Closed repairs whose package is still in transit - drops off this list
 // automatically once tracking flips to Delivered (the tracking data itself
-// is kept fresh by "Refresh Status"/this page's "Refresh All" and the daily
+// is kept fresh by "Refresh Status"/this page's "Refresh All" and the hourly
 // cron sweep), OR after IN_TRANSIT_MAX_DAYS from the ticket's closed date,
 // whichever comes first - so a shipment that never gets confirmed delivered
 // (lost tracking, carrier stopped updating, etc.) doesn't sit here forever.
