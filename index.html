@@ -430,6 +430,9 @@ input:checked+.slider:before{transform:translateX(16px)}
       <div class="nav-item hide-support" id="nav-intransit" onclick="showPage('intransit')">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 8h-3V4H3c-1.1 0-2 .9-2 2v11h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3-4zM6 18.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm13.5-9l1.96 2.5H17V9.5h2.5zM18 18.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>In Transit
       </div>
+      <div class="nav-item hide-support" id="nav-support" onclick="showPage('support')">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z"/></svg>Support
+      </div>
       <div class="nav-item show-support-only hidden" id="nav-supportview" onclick="showPage('supportview')">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>Customer Repairs
       </div>
@@ -673,6 +676,16 @@ input:checked+.slider:before{transform:translateX(16px)}
         <div class="set-row">
           <div class="set-info"><strong>Reset All Data</strong><span>Permanently delete all repairs, activity logs, and employees from the cloud</span></div>
           <button class="btn btn-danger btn-sm" onclick="confirmReset()">Reset</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="content hidden" id="page-support">
+      <div class="set-section">
+        <h3><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z"/></svg>Contact Support</h3>
+        <div class="set-row">
+          <div class="set-info"><strong>Areeb Qureshi</strong><span>Questions, bugs, access requests, anything DTR-related - reach out any time.</span></div>
+          <a class="btn btn-primary btn-sm" href="mailto:areeb.qureshi@masjidal.com">Email Areeb</a>
         </div>
       </div>
     </div>
@@ -1077,10 +1090,15 @@ function canSeeCustomer(){
   return false;
 }
 function canSeeRep(r){
-  if(isSupportMode)return r.type==='customer';
-  var e=getEmp(currentUser);if(!e)return false;
+  if(isSupportMode)return !!(r&&r.type==='customer');
+  var e=getEmp(currentUser);if(!e||!r)return false;
   if(e.role==='admin'||e.role==='general')return true;
-  if(e.role==='tech'&&r.type==='customer')return !!e.seeCustomer||!!e.viewOnlyCustomer;
+  if(e.role==='tech'){
+    if(r.type==='customer')return !!e.seeCustomer||!!e.viewOnlyCustomer;
+    // Non-customer: hidden if notes contains the [TV:0] "not tech-visible" flag.
+    if(r.notes&&r.notes.indexOf('[TV:0]')!==-1)return false;
+    return true;
+  }
   return true;
 }
 function canEdit(r){
@@ -1405,7 +1423,7 @@ function showPage(p){
   document.querySelectorAll('.nav-item').forEach(function(el){el.classList.remove('active');});
   var pg=document.getElementById('page-'+p);if(pg)pg.classList.remove('hidden');
   var nv=document.getElementById('nav-'+p);if(nv)nv.classList.add('active');
-  var titles={dashboard:'Dashboard',allrepairs:'All Repairs',myrepairs:'Customer Repairs',myrepairs2:'My Repairs',completed:'Completed Repairs',intransit:'In Transit',supportview:'Customer Repairs',stats:'Staff Stats',askai:'Masjidal AI',employees:'Employees',activity:'Activity Log',settings:'Settings'};
+  var titles={dashboard:'Dashboard',allrepairs:'All Repairs',myrepairs:'Customer Repairs',myrepairs2:'My Repairs',completed:'Completed Repairs',intransit:'In Transit',support:'Contact Support',supportview:'Customer Repairs',stats:'Staff Stats',askai:'Masjidal AI',employees:'Employees',activity:'Activity Log',settings:'Settings'};
   document.getElementById('topbarTitle').textContent=titles[p]||p;
   closeSidebar();
   if(p==='dashboard')renderDashboard();
@@ -3180,25 +3198,11 @@ initApp();
     }).join('');
   };
 
-  window.canManageCustomer = function(){
-    var e=getEmp(currentUser); if(!e) return false;
-    if(e.role==='admin' || e.role==='general') return true;
-    if(e.role==='tech') return !!e.seeCustomer && !e.viewOnlyCustomer;
-    return false;
-  };
-  window.canSeeCustomer = function(){
-    var e=getEmp(currentUser); if(!e) return false;
-    if(e.role==='admin' || e.role==='general') return true;
-    if(e.role==='tech') return !!e.seeCustomer || !!e.viewOnlyCustomer;
-    return false;
-  };
-  window.canSeeRep = function(r){
-    if(isSupportMode) return r.type==='customer';
-    var e=getEmp(currentUser); if(!e || !r) return false;
-    if(e.role==='admin' || e.role==='general') return true;
-    if(e.role==='tech' && r.type==='customer') return !!e.seeCustomer || !!e.viewOnlyCustomer;
-    return true;
-  };
+  // canManageCustomer/canSeeCustomer/canSeeRep: canonical definitions live
+  // at the top of the file - this used to redeclare them here too, but
+  // reassigning the same global 4 times across patch blocks (each silently
+  // shadowing the last) is exactly the kind of thing that causes a bug when
+  // one copy drifts from the others. Left as one definition now.
 
   // Support login should load current repairs then show dashboard
   window.doSupportLogin = async function(){
@@ -3384,25 +3388,8 @@ initApp();
 <script>
 /* === FINAL VIEW-ONLY LOCK === */
 (function(){
-  window.canManageCustomer = function(){
-    var e=getEmp(currentUser); if(!e) return false;
-    if(e.role==='admin' || e.role==='general') return true;
-    if(e.role==='tech') return !!e.seeCustomer && !e.viewOnlyCustomer;
-    return false;
-  };
-  window.canSeeCustomer = function(){
-    var e=getEmp(currentUser); if(!e) return false;
-    if(e.role==='admin' || e.role==='general') return true;
-    if(e.role==='tech') return !!e.seeCustomer || !!e.viewOnlyCustomer;
-    return false;
-  };
-  window.canSeeRep = function(r){
-    if(isSupportMode) return r && r.type==='customer';
-    var e=getEmp(currentUser); if(!e || !r) return false;
-    if(e.role==='admin' || e.role==='general') return true;
-    if(e.role==='tech' && r.type==='customer') return !!e.seeCustomer || !!e.viewOnlyCustomer;
-    return true;
-  };
+  // canManageCustomer/canSeeCustomer/canSeeRep: see the canonical
+  // definitions at the top of the file.
   var _origSetRTypeLock = window.setRType;
   window.setRType = function(type){
     var e=getEmp(currentUser);
@@ -3446,31 +3433,9 @@ initApp();
     return !!(e && e.role==='tech' && e.seeCustomer && !e.viewOnlyCustomer);
   }
 
-  // Canonical permission helpers
-  window.canManageCustomer = function(){
-    var e=getEmp(currentUser); if(!e) return false;
-    if(e.role==='admin' || e.role==='general') return true;
-    if(e.role==='tech') return !!e.seeCustomer && !e.viewOnlyCustomer;
-    return false;
-  };
-  window.canSeeCustomer = function(){
-    var e=getEmp(currentUser); if(!e) return false;
-    if(e.role==='admin' || e.role==='general') return true;
-    if(e.role==='tech') return !!e.seeCustomer || !!e.viewOnlyCustomer;
-    return false;
-  };
-  window.canSeeRep = function(r){
-    if(isSupportMode) return !!(r && r.type==='customer');
-    var e=getEmp(currentUser); if(!e || !r) return false;
-    if(e.role==='admin' || e.role==='general') return true;
-    if(e.role==='tech'){
-      if(r.type==='customer') return !!e.seeCustomer || !!e.viewOnlyCustomer;
-      // Non-customer: hidden if notes contains [TV:0] flag
-      if(r.notes && r.notes.indexOf('[TV:0]') !== -1) return false;
-      return true;
-    }
-    return true;
-  };
+  // canManageCustomer/canSeeCustomer/canSeeRep: see the canonical
+  // definitions at the top of the file (canSeeRep's [TV:0] notes-flag
+  // check that used to live only in this block is now part of that one).
 
   // Hide customer type unless tech has full customer access
   window.renderSidebar = function(){
