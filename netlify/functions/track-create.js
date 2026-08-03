@@ -1,14 +1,15 @@
 // POST /api/track-create -> /.netlify/functions/track-create (see netlify.toml redirect)
 // Body: { repairId, carrier, number, notes } — registers a shipment for live
 // tracking and stores the result on the repair's `tracking` column.
-// Uses UPS/FedEx's own free Tracking APIs directly when the carrier is one
-// of those (requires UPS_CLIENT_ID/UPS_CLIENT_SECRET or
-// FEDEX_CLIENT_ID/FEDEX_CLIENT_SECRET - no paid plan needed); other
-// carriers (USPS, DHL) fall back to Shippo (SHIPPO_API_KEY), also free. A
-// carrier with an integration configured is never silently skipped - a real
-// failure is reported back as `error`/`tracking.lastError` instead. With
-// nothing configured for the given carrier, this just no-ops and the manual
-// tracking info already saved by the client stays exactly as-is.
+// Prefers UPS/FedEx's own free Tracking APIs directly when the carrier is
+// one of those and configured (UPS_CLIENT_ID/UPS_CLIENT_SECRET or
+// FEDEX_CLIENT_ID/FEDEX_CLIENT_SECRET - no paid plan needed); otherwise
+// (including USPS/DHL, which have no direct integration, or UPS/FedEx when
+// the direct API isn't set up) falls back to Shippo (SHIPPO_API_KEY), also
+// free. A carrier with something configured is never silently skipped - a
+// real failure is reported back as `error`/`tracking.lastError` instead.
+// With nothing configured at all for the given carrier, this just no-ops
+// and the manual tracking info already saved by the client stays as-is.
 const { sbPatch, lookupTracking, json } = require('./utils/shared');
 
 exports.handler = async function (event) {

@@ -311,15 +311,36 @@ function isTrackable(carrier) {
 }
 
 // Single entry point for "get live tracking for this carrier+number,
-// whichever backend applies" - direct carrier API preferred (UPS/FedEx),
-// Shippo otherwise (USPS/DHL). Returns { slug, result } on success, null if
-// this carrier has no tracking source configured. Throws on a real failure.
+// whichever backend applies". The free direct carrier API is preferred for
+// UPS/FedEx when it's configured (fresher/more detailed data, and doesn't
+// use up Shippo's request quota) - but Shippo supports UPS/FedEx too, so if
+// the direct API isn't set up (or is set up but failing), this falls back
+// to Shippo automatically rather than just doing nothing. USPS/DHL always
+// go straight to Shippo, since there's no direct integration for those.
+// Returns { slug, result } on success, null if nothing is configured for
+// this carrier at all. Throws only if something WAS configured and failed
+// (surfacing the most useful error if both were tried and both failed).
 async function lookupTracking(carrier, number) {
-  if (DIRECT_TRACKERS[carrier]) return trackDirect(carrier, number);
-  if (SHIPPO_CARRIER_TOKENS[carrier]) {
-    var result = await trackShippo(carrier, number);
-    return result ? { slug: 'shippo:' + carrier, result: result } : null;
+  var directErr = null;
+  if (DIRECT_TRACKERS[carrier]) {
+    try {
+      var direct = await trackDirect(carrier, number);
+      if (direct) return direct;
+      // not configured - fall through to Shippo below
+    } catch (e) {
+      directErr = e; // configured but failing - still worth trying Shippo before giving up
+    }
   }
+  if (SHIPPO_CARRIER_TOKENS[carrier]) {
+    try {
+      var result = await trackShippo(carrier, number);
+      if (result) return { slug: 'shippo:' + carrier, result: result };
+      // Shippo not configured either
+    } catch (e) {
+      throw directErr ? new Error(directErr.message + ' | Shippo: ' + e.message) : e;
+    }
+  }
+  if (directErr) throw directErr;
   return null;
 }
 
