@@ -103,17 +103,19 @@ change I can make whenever you want it.
 - **Live package tracking.** Closing a ticket with "Device Shipped Back" or
   "Replacement Sent to Customer" already prompted for a carrier + tracking
   number — that part is unchanged. Now, saving that tracking number also
-  registers it with AfterShip (a carrier-tracking API covering UPS, FedEx,
-  USPS, DHL, etc.), and the ticket detail view shows a live status pill
-  ("In Transit", "Out for Delivery", "Delivered", ...), estimated delivery
-  date, and a short checkpoint timeline, with a "Refresh Status" button.
-  Completed Repairs rows also show a small tracking pill so you can see
-  delivery status at a glance without opening the ticket.
-  - Status updates automatically two ways: an AfterShip webhook (near
-    real-time) and a daily scheduled function (fallback, in case the webhook
-    is ever missed). When a package is marked Delivered, an activity-log
-    entry is added automatically.
-  - **This is fully optional.** Until you add an `AFTERSHIP_API_KEY` (see
+  looks up live status directly from UPS/FedEx (their own free tracking
+  APIs) or Shippo (also free, for USPS/DHL), and the ticket detail view
+  shows a live status pill ("In Transit", "Out for Delivery", "Delivered",
+  ...), estimated delivery date, and a short checkpoint timeline, with a
+  "Refresh Status" button. Completed Repairs rows also show a small
+  tracking pill, and there's a dedicated **In Transit** page for everything
+  still on its way back to a customer.
+  - Status updates automatically two ways: a daily scheduled function
+    (always on once any carrier is configured) and, if you set up the
+    optional Shippo webhook, near-real-time updates on Shippo-tracked
+    shipments. When a package is marked Delivered, an activity-log entry is
+    added automatically.
+  - **This is fully optional.** Until you add carrier credentials (see
     below), everything works exactly like before — tracking numbers are
     stored manually with no live status, no errors, no broken UI.
   - Implemented as **Netlify Functions** under `netlify/functions/`, so it
@@ -141,7 +143,8 @@ functions.
    needed.
 4. Under **Site settings → Environment variables**, add whichever of these
    you want (all optional — see `.env.example` for details):
-   - `AFTERSHIP_API_KEY`, `AFTERSHIP_WEBHOOK_SECRET` — live package tracking
+   - `UPS_CLIENT_ID`/`UPS_CLIENT_SECRET`, `FEDEX_CLIENT_ID`/`FEDEX_CLIENT_SECRET`,
+     `SHIPPO_API_KEY` — live package tracking
    - `GEMINI_API_KEY`, `GEMINI_MODEL` — Ask AI
    - `ZENDESK_SUBDOMAIN`, `ZENDESK_EMAIL`, `ZENDESK_API_TOKEN` — customer lookup
    - `SHOPIFY_STORE_DOMAIN`, `SHOPIFY_ADMIN_TOKEN` — customer lookup
@@ -157,9 +160,10 @@ so you keep your existing domain and don't have to redo DNS.
 
 ## 2. Turn on live package tracking (optional)
 
-The tracking feature pulls directly from UPS's and FedEx's own free
-tracking APIs — no AfterShip account, no paid plan, nothing to sign up for
-beyond a free developer account with each carrier:
+Nothing here requires a paid plan or account — UPS and FedEx have their own
+free tracking APIs (preferred, used automatically for those two carriers),
+and Shippo (which Masjidal already uses) covers the rest (USPS, DHL) for
+free too, no shipping labels need to be purchased through them.
 
 **UPS:**
 1. Go to [developer.ups.com](https://developer.ups.com) → sign up/log in →
@@ -176,34 +180,38 @@ beyond a free developer account with each carrier:
 3. In Netlify: Site settings → Environment variables → add
    `FEDEX_CLIENT_ID` and `FEDEX_CLIENT_SECRET`.
 
-Then **redeploy** (Deploys → Trigger deploy). That's it — saving a UPS or
-FedEx tracking number now automatically looks up live status directly from
-that carrier, shown in the ticket detail view and the new **In Transit**
-page (left sidebar), refreshed by the "Refresh Status"/"Refresh All"
-buttons and the daily scheduled sweep. Only need one of these set up if you
-only ship one of the two carriers.
+**Shippo** (covers USPS/DHL — anything that isn't UPS/FedEx):
+1. Log into your existing Shippo account at
+   [apps.goshippo.com/settings/api](https://apps.goshippo.com/settings/api).
+2. Copy the **API Token** (the live one, not "Test Token").
+3. In Netlify: Site settings → Environment variables → add `SHIPPO_API_KEY`.
+
+Then **redeploy** (Deploys → Trigger deploy). That's it — saving a tracking
+number now automatically looks up live status (UPS/FedEx direct if that's
+the carrier, Shippo otherwise), shown in the ticket detail view and the new
+**In Transit** page (left sidebar), refreshed by the "Refresh
+Status"/"Refresh All" buttons and the daily scheduled sweep. You only need
+to set up the carriers you actually ship with — e.g. if you only ship
+UPS/FedEx, Shippo isn't needed at all, and vice versa.
 
 **If tracking isn't working**: open the ticket detail view (or the In
 Transit page) and check the message under the tracking status — it shows
 the real reason instead of a generic error (bad credentials, an app still
 awaiting production approval, etc.), so you don't need to check Netlify
-function logs. The most common cause for either carrier: a developer app
-starts out sandboxed and needs to be approved for **production** access to
-the tracking product before the production API will accept requests from
-it — check your app's status on the carrier's developer portal if you're
-seeing an authentication error.
+function logs. The most common cause for UPS/FedEx specifically: a
+developer app starts out sandboxed and needs to be approved for
+**production** access to the tracking product before the production API
+will accept requests from it — check your app's status on the carrier's
+developer portal if you're seeing an authentication error.
 
-**Limitation to know about**: neither carrier's free API offers an easy
-webhook for real-time push updates, so tracked shipments only update when
-someone clicks "Refresh Status"/"Refresh All" or when the daily sweep runs
-(once/day) — not instantly the moment the carrier's system updates. For a
-repair shop's volume this is normally fine; say the word if you want
-tighter timing later.
-
-If you ever also want AfterShip as a fallback for other carriers (USPS,
-DHL, etc.), the code already supports it: set `AFTERSHIP_API_KEY`, and
-optionally `AFTERSHIP_WEBHOOK_SECRET` for near-real-time updates on those.
-Not required for UPS/FedEx.
+**Limitation to know about**: UPS/FedEx's free APIs don't offer an easy
+webhook for real-time push updates, so UPS/FedEx-tracked shipments only
+update when someone clicks "Refresh Status"/"Refresh All" or when the daily
+sweep runs (once/day) — not instantly the moment the carrier's system
+updates. Shippo-tracked shipments (USPS/DHL) CAN get near-real-time updates
+if you set up the optional webhook (see `SHIPPO_WEBHOOK_SECRET` in
+`.env.example`); otherwise they're on the same once/day sweep. For a repair
+shop's volume this is normally fine either way.
 
 ### In Transit page
 
@@ -211,10 +219,12 @@ A dedicated **In Transit** view (left sidebar, under Completed) lists every
 closed repair whose package tracking hasn't hit "Delivered" yet — carrier,
 tracking number, live status, and estimated delivery, with a "Refresh All"
 button to force-check everything on the list at once. A repair drops off
-this list automatically the moment its tracking flips to Delivered (no
-manual step needed) — it stays visible in Completed Repairs either way,
-this is just a focused view for "what's still on its way back to a
-customer right now."
+this list automatically the moment its tracking flips to Delivered, **or
+after 7 days from the ticket's closed date, whichever comes first** — so
+one that never gets confirmed as delivered (lost tracking, carrier stopped
+updating, etc.) doesn't sit there forever. It stays visible in Completed
+Repairs either way, with its last known tracking status — this cutoff only
+affects the dedicated In Transit list, not the underlying data.
 
 ### Scheduled function note
 

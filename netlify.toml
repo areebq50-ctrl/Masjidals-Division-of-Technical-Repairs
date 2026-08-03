@@ -10,6 +10,6 @@
   status = 200
 
 # Daily fallback sweep so shipment status keeps updating until Delivered even
-# if the AfterShip webhook is never configured or is missed.
+# if the Shippo webhook is never configured or is missed.
 [functions."track-cron"]
   schedule = "0 13 * * *"

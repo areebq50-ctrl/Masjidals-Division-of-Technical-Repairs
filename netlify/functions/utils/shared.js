@@ -33,24 +33,6 @@ async function sbPost(table, obj) {
   return r.json();
 }
 
-const CARRIER_SLUGS = { UPS: 'ups', FedEx: 'fedex', USPS: 'usps', DHL: 'dhl' };
-
-const STATUS_MAP = {
-  Pending: { label: 'Label Created', color: 'yellow' },
-  InfoReceived: { label: 'Label Created', color: 'yellow' },
-  InTransit: { label: 'In Transit', color: 'blue' },
-  OutForDelivery: { label: 'Out for Delivery', color: 'purple' },
-  AttemptFail: { label: 'Delivery Attempted', color: 'red' },
-  Delivered: { label: 'Delivered', color: 'green' },
-  Exception: { label: 'Exception', color: 'red' },
-  Expired: { label: 'Tracking Expired', color: 'red' },
-  AvailableForPickup: { label: 'Available for Pickup', color: 'purple' }
-};
-
-function mapStatus(tag) {
-  return STATUS_MAP[tag] || { label: tag || 'Unknown', color: 'blue' };
-}
-
 function json(statusCode, obj) {
   return { statusCode: statusCode, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(obj) };
 }
@@ -64,7 +46,7 @@ function describeFetchError(e) {
   return String(e) + (causeMsg ? ' (cause: ' + causeMsg + ')' : '');
 }
 
-// --- UPS direct tracking (free UPS Developer Kit API - no AfterShip needed) ---
+// --- UPS direct tracking (free UPS Developer Kit API - no Shippo needed) ---
 // OAuth2 client_credentials token. Fetched fresh per request rather than
 // cached, since these are short-lived serverless invocations - simpler and
 // still well within UPS's rate limits for this shop's volume.
@@ -109,7 +91,7 @@ const UPS_STATUS_MAP = {
   X: { label: 'Exception', color: 'red' }
 };
 
-// Returns the same normalized shape the AfterShip path uses
+// Returns the same normalized shape the Shippo path uses
 // ({statusTag, statusText, statusColor, expectedDelivery, checkpoints}) so
 // the rest of the app doesn't need to know which backend served it.
 // Returns null only when UPS isn't configured at all; throws on any real
@@ -162,7 +144,7 @@ async function trackUpsDirect(trackingNumber) {
   };
 }
 
-// --- FedEx direct tracking (free FedEx Track API - no AfterShip needed) ---
+// --- FedEx direct tracking (free FedEx Track API - no Shippo needed) ---
 // Same shape/contract as the UPS functions above: returns null only when
 // FEDEX_CLIENT_ID/FEDEX_CLIENT_SECRET aren't set, throws on any real
 // failure.
@@ -251,9 +233,9 @@ const DIRECT_TRACKERS = {
 };
 
 // Returns null if this carrier has no direct integration at all (falls back
-// to AfterShip) or if it does but isn't configured. Throws on a real
-// failure. On success returns { slug, result } where `result` is the
-// normalized tracking shape trackUpsDirect()/trackFedexDirect() return.
+// to Shippo) or if it does but isn't configured. Throws on a real failure.
+// On success returns { slug, result } where `result` is the normalized
+// tracking shape trackUpsDirect()/trackFedexDirect() return.
 async function trackDirect(carrier, number) {
   var entry = DIRECT_TRACKERS[carrier];
   if (!entry) return null;
@@ -262,4 +244,88 @@ async function trackDirect(carrier, number) {
   return { slug: entry.slug, result: result };
 }
 
-module.exports = { sbGet, sbPatch, sbPost, CARRIER_SLUGS, STATUS_MAP, mapStatus, json, trackDirect, DIRECT_TRACKERS, describeFetchError, SUPABASE_URL, SUPABASE_KEY };
+// --- Shippo tracking (free Tracking API - the fallback for carriers without
+// their own direct integration above, e.g. USPS/DHL) ---
+// Shippo tracking works with just an API key, no shipping labels need to be
+// purchased through them - https://apps.goshippo.com/settings/api lists it
+// under "API Token" (a live token, not the "Test Token").
+const SHIPPO_CARRIER_TOKENS = { UPS: 'ups', FedEx: 'fedex', USPS: 'usps', DHL: 'dhl_express' };
+
+const SHIPPO_STATUS_MAP = {
+  UNKNOWN: { label: 'Unknown', color: 'blue' },
+  PRE_TRANSIT: { label: 'Label Created', color: 'yellow' },
+  TRANSIT: { label: 'In Transit', color: 'blue' },
+  DELIVERED: { label: 'Delivered', color: 'green' },
+  RETURNED: { label: 'Returned to Sender', color: 'red' },
+  FAILURE: { label: 'Delivery Failed', color: 'red' }
+};
+
+function normalizeShippoTrack(data) {
+  var ts = data.tracking_status || {};
+  var mapped = SHIPPO_STATUS_MAP[ts.status] || { label: ts.status || 'Unknown', color: 'blue' };
+  var history = (data.tracking_history || []).slice().reverse();
+  var checkpoints = history.map(function (h) {
+    var loc = h.location ? [h.location.city, h.location.state, h.location.country].filter(Boolean).join(', ') : '';
+    return { message: h.status_details || h.status || '', city: loc, checkpoint_time: h.status_date || null };
+  });
+  return {
+    statusTag: ts.status === 'DELIVERED' ? 'Delivered' : mapped.label,
+    statusText: mapped.label,
+    statusColor: mapped.color,
+    expectedDelivery: data.eta || null,
+    checkpoints: checkpoints
+  };
+}
+
+// Registers (or re-fetches, Shippo treats both the same way) a tracking
+// number. Returns null only when SHIPPO_API_KEY isn't set, or when this
+// carrier has no known Shippo carrier token. Throws on a real failure.
+async function trackShippo(carrier, number) {
+  var apiKey = process.env.SHIPPO_API_KEY;
+  if (!apiKey) return null;
+  var token = SHIPPO_CARRIER_TOKENS[carrier];
+  if (!token) return null;
+  var r;
+  try {
+    r = await fetch('https://api.goshippo.com/tracks/', {
+      method: 'POST',
+      headers: { Authorization: 'ShippoToken ' + apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ carrier: token, tracking_number: number })
+    });
+  } catch (e) {
+    throw new Error('Shippo tracking request failed: ' + describeFetchError(e));
+  }
+  if (!r.ok) {
+    var errText = await r.text();
+    throw new Error('Shippo tracking lookup failed (' + r.status + '): ' + errText.substring(0, 300));
+  }
+  var data = await r.json();
+  return normalizeShippoTrack(data);
+}
+
+// Whether this carrier has ANY tracking source configured/possible - used
+// by callers to decide whether it's worth (re)trying, independent of
+// whether a specific attempt has previously succeeded.
+function isTrackable(carrier) {
+  return !!DIRECT_TRACKERS[carrier] || !!SHIPPO_CARRIER_TOKENS[carrier];
+}
+
+// Single entry point for "get live tracking for this carrier+number,
+// whichever backend applies" - direct carrier API preferred (UPS/FedEx),
+// Shippo otherwise (USPS/DHL). Returns { slug, result } on success, null if
+// this carrier has no tracking source configured. Throws on a real failure.
+async function lookupTracking(carrier, number) {
+  if (DIRECT_TRACKERS[carrier]) return trackDirect(carrier, number);
+  if (SHIPPO_CARRIER_TOKENS[carrier]) {
+    var result = await trackShippo(carrier, number);
+    return result ? { slug: 'shippo:' + carrier, result: result } : null;
+  }
+  return null;
+}
+
+module.exports = {
+  sbGet, sbPatch, sbPost, json, describeFetchError, SUPABASE_URL, SUPABASE_KEY,
+  trackDirect, DIRECT_TRACKERS,
+  trackShippo, SHIPPO_CARRIER_TOKENS, normalizeShippoTrack,
+  isTrackable, lookupTracking
+};
