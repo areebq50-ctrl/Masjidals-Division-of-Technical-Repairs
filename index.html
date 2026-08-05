@@ -1289,27 +1289,11 @@ async function doLogin(){
   }
   if(btn)btn.disabled=false;
 }
-function doSupportLogin(){
-  isSupportMode=true;currentUser=null;
-  document.getElementById('loginScreen').style.display='none';
-  document.getElementById('app').style.cssText='display:flex;width:100%;min-height:100vh;';
-  showGlobalSearch(); // Show global search bar
-  document.getElementById('supportBanner').classList.remove('hidden');
-  document.getElementById('sbAv').style.background='#6b21a8';
-  document.getElementById('sbAv').style.color='#fff';
-  document.getElementById('sbAv').textContent='S';
-  document.getElementById('sbName').textContent='Support Team';
-  document.getElementById('sbRole').textContent='View Only';
-  document.querySelectorAll('.show-support-only').forEach(function(el){el.classList.remove('hidden');});
-  renderSidebar();
-  doLoad().then(function(){
-    showPage('dashboard');
-    startPolling();
-  }).catch(function(){
-    showPage('dashboard');
-    startPolling();
-  });
-}
+// doSupportLogin: see the canonical definition later in the file (it also
+// merges local view-only-tech flags after loading, which this didn't) - two
+// copies of this used to exist, silently shadowing each other, which is how
+// this one's showGlobalSearch() call went missing from the one that
+// actually ran.
 function logout(){
   stopPolling();currentUser=null;selectedEmpId=null;isSupportMode=false;
   document.getElementById('app').style.display='none';
@@ -3208,6 +3192,7 @@ initApp();
     isSupportMode=true; currentUser=null;
     document.getElementById('loginScreen').style.display='none';
     document.getElementById('app').style.cssText='display:flex;width:100%;min-height:100vh;';
+    showGlobalSearch();
     document.getElementById('supportBanner').classList.remove('hidden');
     document.getElementById('sbAv').style.background='#6b21a8';
     document.getElementById('sbAv').style.color='#fff';
