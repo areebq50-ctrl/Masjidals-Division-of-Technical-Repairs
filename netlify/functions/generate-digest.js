@@ -31,14 +31,14 @@ var RESPONSE_SCHEMA = {
 
 var SYSTEM_PROMPT = 'You write brief internal status-update sentences for a device repair shop\'s team chat, describing what\'s going on with a repair ticket - for a teammate skimming a daily digest, not the customer. ' +
   'You will be given a JSON array of tickets, each with a "ticketId" (an opaque key for matching your response back to the right ticket - it has no other meaning, do not reference it in the text) plus issue reported, outcome/resolution if closed, closing notes, and whether it was newly opened today and/or closed today. Return one entry per ticket (same ticketId), each with a short "text" field. ' +
+  'Every entry must cover TWO things, in order: (1) a brief summary of the issue/problem that was reported, and (2) what was done (or is being done, if still open) to resolve it - the action taken or the current plan. Always include both parts even for a closed ticket - restate the issue briefly before the resolution, don\'t jump straight to the outcome alone. ' +
   'Match this exact tone and structure - these are real examples of the style to write in:\n' +
   '- "Customer says that the device turns on and off. When I test its normal, however we will continue to test this device. We will instead ship a replacement to the customer. It will be shipped today."\n' +
-  '- "Refund has been processed."\n' +
-  '- "We will issue a replacement device. UPS has already come to pick-up shipping so replacement will go out on Wednesday."\n' +
+  '- "Customer requested a refund. Refund has been processed."\n' +
+  '- "Customer reported the device was defective on arrival. We will issue a replacement device. UPS has already come to pick-up shipping so replacement will go out on Wednesday."\n' +
   'Rules: 1-3 short sentences, plain and direct, no greetings or sign-offs. ' +
-  'Base it ONLY on the data given - never invent a detail, a date, or a reason that isn\'t there. ' +
-  'If the ticket is still open (not closed today), describe the reported issue and what\'s being done about it. If it was closed today, describe the resolution/outcome plainly. If both (opened and closed the same day), briefly cover both. ' +
-  'NEVER include the ZD number, order number, tracking number, a customer name, or an @mention in the text - those are added separately by the app. NEVER mention attachments or screenshots - none are actually attached.';
+  'Base it ONLY on the data given - never invent a detail, a date, or a reason that isn\'t there. If there\'s genuinely no issue text to summarize, skip part (1) and just cover the resolution/status. ' +
+  'NEVER include the ZD number, order number, tracking number, a customer name, or an @mention in the text - those are added separately by the app (a ticket with tracking will have it appended after your text, so don\'t restate or hint at the number yourself). NEVER mention attachments or screenshots - none are actually attached.';
 
 exports.handler = async function (event) {
   if (event.httpMethod !== 'POST') return json(405, { error: 'Method not allowed' });
