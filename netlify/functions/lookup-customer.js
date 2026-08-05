@@ -1,15 +1,18 @@
 // POST /api/lookup-customer -> /.netlify/functions/lookup-customer
 // Body: { zdid, ordnum } - looks up customer name/email/phone from Zendesk
 // (by ticket ID) and/or Shopify (by order number), plus a warranty
-// determination from the Shopify order date when available. Read-only:
-// never writes anything back to Zendesk/Shopify. Fails gracefully
-// (found:false) if the relevant env vars aren't configured, so the app just
-// quietly does nothing until you set these up - see SETUP.md.
+// determination from the Shopify order date when available, which Zendesk
+// agent is assigned to the ticket (mapped to the shop's "ZD Assigned To"
+// options), and a Gemini-generated one-sentence summary of the ticket's
+// reported issue. Read-only: never writes anything back to Zendesk/Shopify.
+// Fails gracefully (found:false) if the relevant env vars aren't
+// configured, so the app just quietly does nothing until you set these up
+// - see SETUP.md.
 //
 // Warranty: standard warranty is 12 months from the Shopify order date. If
 // the order has a line item with SKU "aframewarranty" (the $30 extended
 // warranty add-on, +1 year), the total is bumped to 24 months.
-const { json, describeFetchError } = require('./utils/shared');
+const { json, describeFetchError, callGemini } = require('./utils/shared');
 
 var WARRANTY_MONTHS = 12;
 var EXTENDED_WARRANTY_MONTHS = 24;
@@ -32,9 +35,11 @@ function isValidZendeskSubdomain(s){
   return /^[a-z0-9-]+$/i.test(s);
 }
 
-// Returns { name, email, phone } on a match, null if simply not
-// configured/not found, or { error: '...' } on a real API failure (bad
-// credentials, network issue, etc.) so the caller can tell the difference.
+// Returns { name, email, phone, assignedAgent, subject, description } on a
+// match (assignedAgent/subject/description may be empty strings if the
+// ticket doesn't have them), null if simply not configured/not found, or
+// { error: '...' } on a real API failure (bad credentials, network issue,
+// etc.) so the caller can tell the difference.
 async function lookupZendesk(zdid){
   var subdomain=cleanZendeskSubdomain(process.env.ZENDESK_SUBDOMAIN), email=process.env.ZENDESK_EMAIL, token=process.env.ZENDESK_API_TOKEN;
   if(!subdomain||!email||!token||!zdid)return null;
@@ -51,16 +56,61 @@ async function lookupZendesk(zdid){
       return {error:'Zendesk returned '+tr.status+': '+(await tr.text()).substring(0,200)};
     }
     var tdata=await tr.json();
-    var requesterId=tdata.ticket&&tdata.ticket.requester_id;
+    var ticket=tdata.ticket||{};
+    var requesterId=ticket.requester_id;
     if(!requesterId)return null;
     var ur=await fetch('https://'+subdomain+'.zendesk.com/api/v2/users/'+requesterId+'.json',{headers:headers});
     if(!ur.ok)return {error:'Zendesk user lookup returned '+ur.status};
     var udata=await ur.json();
     var u=udata.user||{};
     if(!u.name&&!u.email)return null;
-    return {name:u.name||'',email:u.email||'',phone:u.phone||''};
+
+    // Who's actually handling this ticket (the agent, not the customer) -
+    // used to auto-fill "ZD Assigned To", separate from the customer fields.
+    var assignedAgent='';
+    if(ticket.assignee_id){
+      var ar=await fetch('https://'+subdomain+'.zendesk.com/api/v2/users/'+ticket.assignee_id+'.json',{headers:headers});
+      if(ar.ok){var adata=await ar.json();assignedAgent=(adata.user||{}).name||'';}
+    }
+
+    return {name:u.name||'',email:u.email||'',phone:u.phone||'',assignedAgent:assignedAgent,
+      subject:ticket.subject||'',description:ticket.description||''};
   }catch(e){
     return {error:'Zendesk request failed: '+describeFetchError(e)};
+  }
+}
+
+// Matches a Zendesk agent's name against the shop's fixed "ZD Assigned To"
+// options (see f-assigned-to in index.html) - substring match so "Awais
+// Khan" still matches "Awais". Returns '' if no confident match.
+var ZD_ASSIGNEE_OPTIONS=['Awais','Afroz','Kiran'];
+function matchAssignee(agentName){
+  if(!agentName)return'';
+  var lower=agentName.toLowerCase();
+  var match=ZD_ASSIGNEE_OPTIONS.find(function(opt){return lower.indexOf(opt.toLowerCase())!==-1;});
+  return match||'';
+}
+
+// Summarizes a Zendesk ticket's subject/description into a short plain-text
+// issue description for the repair's "Issue / Problem" field. Returns null
+// if there's nothing to summarize, GEMINI_API_KEY isn't set, or the
+// summarization call fails for any reason - this is a nice-to-have on top
+// of the customer lookup, never worth failing the whole lookup over.
+async function summarizeIssue(subject,description){
+  if(!subject&&!description)return null;
+  try{
+    var text=await callGemini(
+      'You summarize a customer support ticket into ONE short, plain, factual sentence describing the device issue being reported, for a repair technician who will read it as the "Issue / Problem" field on a repair ticket. State only what the customer reported - no greetings, no filler, no quotes, no "the customer says". If the subject/description don\'t actually describe a device issue, respond with exactly: NONE',
+      'Ticket subject: '+(subject||'(none)')+'\n\nTicket description:\n'+(description||'(none)').slice(0,3000),
+      {temperature:0.2,maxOutputTokens:150,thinkingBudget:0,timeoutMs:12000}
+    );
+    if(!text)return null;
+    text=text.trim();
+    if(!text||/^NONE$/i.test(text))return null;
+    return text;
+  }catch(e){
+    console.error('Issue summarization failed (non-fatal)',e);
+    return null;
   }
 }
 
@@ -142,16 +192,22 @@ exports.handler = async function (event) {
       return json(200,{found:false,message:msg});
     }
 
+    var assignedTo=zd?matchAssignee(zd.assignedAgent):'';
+    var issueSummary=zd?await summarizeIssue(zd.subject,zd.description):null;
+
     var merged={
       name:(zd&&zd.name)||(sh&&sh.name)||'',
       email:(zd&&zd.email)||(sh&&sh.email)||'',
       phone:(zd&&zd.phone)||(sh&&sh.phone)||'',
       purchaseDate:(sh&&sh.purchaseDate)||null,
       warrantyMonths:(sh&&sh.warrantyMonths)||null,
+      assignedTo:assignedTo,
+      issueSummary:issueSummary,
       source:[zd?'Zendesk':null,sh?'Shopify':null].filter(Boolean).join(' + ')
     };
     return json(200,{found:true,name:merged.name,email:merged.email,phone:merged.phone,
-      purchaseDate:merged.purchaseDate,warrantyMonths:merged.warrantyMonths,source:merged.source});
+      purchaseDate:merged.purchaseDate,warrantyMonths:merged.warrantyMonths,
+      assignedTo:merged.assignedTo,issueSummary:merged.issueSummary,source:merged.source});
   }catch(e){
     console.error(e);
     return json(500,{found:false,error:'Lookup failed',detail:String(e)});

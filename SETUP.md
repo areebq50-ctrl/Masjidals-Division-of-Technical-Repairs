@@ -73,11 +73,20 @@ change I can make whenever you want it.
 - **Customer contact fields** (name/email/phone) added to customer repairs,
   optional, shown in the detail view. Groundwork for any future
   customer-facing notifications.
-- **"Look up customer" button** on the New Repair form pulls name/email/phone
-  from Zendesk (by ticket ID) and/or Shopify (by order number) into those new
-  fields - you review and it fills in, never auto-saves silently. Needs
-  `ZENDESK_*`/`SHOPIFY_*` env vars (see below) - does nothing until then.
-  Read-only: it never writes anything back to Zendesk or Shopify.
+- **Auto-fill on Zendesk ID/Order Number entry** (New Repair form) - typing a
+  Zendesk ID or Order Number and tabbing out automatically fills in, all
+  reviewable before saving, never auto-saved silently:
+  - Customer Name/Email/Phone, from Zendesk (ticket requester) and/or
+    Shopify (order).
+  - **ZD Assigned To** (Awais/Afroz/Kiran) - matched from the Zendesk
+    ticket's assigned agent, separate from the customer's own info above.
+  - **Warranty** toggle + date - from the Shopify order's purchase date (12
+    months standard, 24 with the `aframewarranty` SKU).
+  - **Issue / Problem** - a one-sentence Gemini-generated summary of the
+    Zendesk ticket's subject/description (needs `GEMINI_API_KEY` too; skipped
+    silently if that's not set, same as everything else here).
+  Needs `ZENDESK_*`/`SHOPIFY_*` env vars (see below) - does nothing until
+  then. Read-only: never writes anything back to Zendesk or Shopify.
 - **Numeric PIN keypad** on the login screen - faster to tap on a shop-floor
   phone/tablet than the native keyboard. Physical keyboard typing still works.
 - **Delivered vs Awaiting Delivery filter** on Completed Repairs, using the

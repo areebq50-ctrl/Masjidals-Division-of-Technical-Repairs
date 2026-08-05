@@ -344,9 +344,64 @@ async function lookupTracking(carrier, number) {
   return null;
 }
 
+// --- Gemini helper (used by ai-ask.js and lookup-customer.js) ---
+// Returns the model's raw text response, or null if GEMINI_API_KEY isn't
+// set (feature just doesn't activate, same "fails gracefully" pattern as
+// the rest of this app). Throws on a real failure. Retries once against a
+// known-good model on 404 (in case the configured/default model name gets
+// retired again in the future) and once without thinkingConfig if the
+// resolved model rejects it.
+async function callGemini(systemPrompt, userPrompt, opts) {
+  var apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return null;
+  opts = opts || {};
+  var primaryModel = process.env.GEMINI_MODEL || 'gemini-flash-latest';
+
+  function request(model, skipThinkingConfig) {
+    var generationConfig = { temperature: opts.temperature != null ? opts.temperature : 0.2, maxOutputTokens: opts.maxOutputTokens || 1024 };
+    if (opts.responseSchema) { generationConfig.responseMimeType = 'application/json'; generationConfig.responseSchema = opts.responseSchema; }
+    if (!skipThinkingConfig) generationConfig.thinkingConfig = { thinkingBudget: opts.thinkingBudget != null ? opts.thinkingBudget : 0 };
+    var controller = new AbortController();
+    var timeout = setTimeout(function () { controller.abort(); }, opts.timeoutMs || 15000);
+    return fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + apiKey, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+        generationConfig: generationConfig
+      })
+    }).finally(function () { clearTimeout(timeout); });
+  }
+
+  var r;
+  try {
+    r = await request(primaryModel, false);
+  } catch (e) {
+    throw new Error(e.name === 'AbortError' ? 'Gemini request timed out' : 'Gemini request failed: ' + describeFetchError(e));
+  }
+  if (!r.ok && r.status === 404 && !process.env.GEMINI_MODEL) {
+    r = await request('gemini-2.5-flash', false);
+  }
+  if (!r.ok && r.status === 400) {
+    var checkText = await r.clone().text();
+    if (/thinking/i.test(checkText)) r = await request(primaryModel, true);
+  }
+  if (!r.ok) {
+    var errText = await r.text();
+    throw new Error('Gemini error (' + r.status + '): ' + errText.substring(0, 300));
+  }
+  var respData = await r.json();
+  var candidate = respData.candidates && respData.candidates[0];
+  var text = candidate && candidate.content && candidate.content.parts && candidate.content.parts[0] && candidate.content.parts[0].text;
+  return text || null;
+}
+
 module.exports = {
   sbGet, sbPatch, sbPost, json, describeFetchError, SUPABASE_URL, SUPABASE_KEY,
   trackDirect, DIRECT_TRACKERS,
   trackShippo, SHIPPO_CARRIER_TOKENS, normalizeShippoTrack,
-  isTrackable, lookupTracking
+  isTrackable, lookupTracking,
+  callGemini
 };

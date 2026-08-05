@@ -2414,6 +2414,13 @@ async function lookupCustomer(auto){
       if(nameEl&&!nameEl.value.trim()&&data.name)nameEl.value=data.name;
       if(emailEl&&!emailEl.value.trim()&&data.email)emailEl.value=data.email;
       if(phoneEl&&!phoneEl.value.trim()&&data.phone)phoneEl.value=data.phone;
+      // Which of our employees is handling this ticket in Zendesk - a
+      // separate thing from the customer's own info above.
+      var assignEl=document.getElementById('f-assigned-to');
+      if(assignEl&&!assignEl.value&&data.assignedTo)assignEl.value=data.assignedTo;
+      // Gemini's one-sentence summary of what the customer reported.
+      var issueEl=document.getElementById('f-issue');
+      if(issueEl&&!issueEl.value.trim()&&data.issueSummary)issueEl.value=data.issueSummary;
       var statusMsg='Filled in from '+(data.source||'lookup')+' - review before saving.';
       // Shopify order date -> warranty: 12 months standard, 24 months if the
       // order has the "aframewarranty" SKU (extended warranty add-on).
@@ -2432,7 +2439,7 @@ async function lookupCustomer(auto){
     }
   }catch(e){
     console.error(e);
-    if(status)status.textContent=auto?'':'Lookup unavailable right now.';
+    if(status)status.textContent='Lookup unavailable right now.';
     if(!auto)toast('Lookup unavailable right now.');
   }
 }
