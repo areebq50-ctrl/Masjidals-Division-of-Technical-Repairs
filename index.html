@@ -46,29 +46,26 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);-we
 .login-logo img{width:44px;height:44px;object-fit:contain;background:#ffffff;border-radius:10px;padding:4px;border:1px solid #e2e5eb}
 .login-logo h1{font-size:17px;font-weight:700;letter-spacing:-.3px}
 .login-logo p{font-size:11px;color:var(--text3);font-weight:500;letter-spacing:.04em;text-transform:uppercase;margin-top:1px}
-.login-box h2{font-size:20px;font-weight:700;letter-spacing:-.4px;margin-bottom:14px}
-.login-steps{display:flex;align-items:center;gap:8px;margin-bottom:16px}
-.login-step-num{width:20px;height:20px;border-radius:50%;background:var(--surface2);color:var(--text3);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:.15s}
-.login-step-num.active{background:var(--accent);color:#fff}
-.login-step-lbl{font-size:12px;color:var(--text3);font-weight:600}
-.login-step-num.active+.login-step-lbl{color:var(--text2)}
-.login-step-line{flex:1;height:1px;background:var(--border);min-width:12px}
-.user-cards{display:flex;flex-direction:column;gap:8px;margin-bottom:18px;max-height:260px;overflow-y:auto}
-.user-card{display:flex;align-items:center;gap:12px;padding:13px 14px;border:2px solid var(--border);border-radius:10px;cursor:pointer;background:var(--surface2);transition:.15s;flex-shrink:0}
-.user-card:hover,.user-card.sel{border-color:var(--accent);background:var(--accent-light)}
-.av{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0}
-.ui strong{font-size:13px;font-weight:600;display:block}
-.ui span{font-size:11px;color:var(--text2)}
-.role-tag{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;margin-left:5px;vertical-align:middle}
+.login-box h2{font-size:16px;font-weight:700;letter-spacing:-.3px;margin-bottom:16px;color:var(--text2)}
+#loginStepPin.hidden,#loginStepAccount.hidden{display:none}
+.user-tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:18px;padding:2px}
+.user-tile{display:flex;flex-direction:column;align-items:center;text-align:center;gap:9px;padding:18px 10px;border:2px solid var(--border);border-radius:12px;cursor:pointer;background:var(--surface2);transition:.15s}
+.user-tile:hover{border-color:var(--accent);background:var(--accent-light);transform:translateY(-1px)}
+.av{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0}
+.user-tile strong{font-size:13px;font-weight:600;display:block}
+.role-tag{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;margin-top:2px}
 .rt-admin{background:#fef3c7;color:#92400e}
 .rt-tech{background:#dbeafe;color:#1e40af}
 .rt-general{background:#dcfce7;color:#14532d}
 .rt-support{background:#f3e8ff;color:#6b21a8}
-.pin-group{margin-bottom:14px;transition:opacity .15s}
-.pin-group label{font-size:12px;font-weight:600;color:var(--text2);display:block;margin-bottom:5px}
-.pin-input{width:100%;padding:10px 13px;border:2px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit;outline:none;transition:.15s}
+.login-back{display:flex;align-items:center;gap:5px;background:none;border:none;cursor:pointer;color:var(--text3);font-size:12px;font-weight:600;font-family:inherit;padding:0;margin-bottom:18px}
+.login-back:hover{color:var(--text2)}
+.login-back svg{width:13px;height:13px}
+.login-selected-emp{display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--surface2);border-radius:10px;margin-bottom:18px}
+.login-selected-emp strong{font-size:14px;font-weight:600;display:block}
+.pin-group{margin-bottom:14px}
+.pin-input{width:100%;padding:12px 13px;border:2px solid var(--border);border-radius:8px;font-size:16px;font-family:inherit;outline:none;transition:.15s;letter-spacing:2px}
 .pin-input:focus{border-color:var(--accent)}
-.pin-input:disabled{background:var(--surface2);cursor:not-allowed;color:var(--text3)}
 .login-divider{border-top:1px solid var(--border);margin:18px 0 14px}
 .pin-keypad{display:none;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
 @media(pointer:coarse){.pin-keypad{display:grid}}
@@ -80,6 +77,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);-we
 .login-btn:hover{background:#155db8}
 .login-btn:disabled{opacity:.6;cursor:not-allowed}
 .login-err{color:var(--red);font-size:12px;margin-top:8px;display:none}
+.support-login-link{background:none;border:none;cursor:pointer;color:#6b21a8;font-size:13px;font-weight:600;font-family:inherit;text-decoration:underline}
 
 /* APP */
 #app{display:none;min-height:100vh;width:100%}
@@ -366,38 +364,43 @@ input:checked+.slider:before{transform:translateX(16px)}
       <img id="loginLogo" src="" alt="Masjidal">
       <div><h1>Masjidal</h1><p>Division of Technical Repairs</p></div>
     </div>
-    <h2>Sign In</h2>
-    <div class="login-steps">
-      <span class="login-step-num active" id="loginStep1">1</span><span class="login-step-lbl">Select account</span>
-      <span class="login-step-line"></span>
-      <span class="login-step-num" id="loginStep2">2</span><span class="login-step-lbl">Enter PIN</span>
-    </div>
-    <div class="user-cards" id="userCards"></div>
-    <div class="pin-group" id="pinGroup">
-      <label>PIN</label>
-      <input class="pin-input" type="password" id="pinInput" placeholder="Select an account above first" maxlength="8" inputmode="none" disabled onkeydown="if(event.key==='Enter')doLogin()">
-      <div class="login-err" id="loginErr">Incorrect PIN. Try again.</div>
-      <div class="pin-keypad" id="pinKeypad">
-        <button type="button" class="pk-btn" onclick="pinKeyPress('1')">1</button>
-        <button type="button" class="pk-btn" onclick="pinKeyPress('2')">2</button>
-        <button type="button" class="pk-btn" onclick="pinKeyPress('3')">3</button>
-        <button type="button" class="pk-btn" onclick="pinKeyPress('4')">4</button>
-        <button type="button" class="pk-btn" onclick="pinKeyPress('5')">5</button>
-        <button type="button" class="pk-btn" onclick="pinKeyPress('6')">6</button>
-        <button type="button" class="pk-btn" onclick="pinKeyPress('7')">7</button>
-        <button type="button" class="pk-btn" onclick="pinKeyPress('8')">8</button>
-        <button type="button" class="pk-btn" onclick="pinKeyPress('9')">9</button>
-        <button type="button" class="pk-btn pk-side" onclick="pinKeyClear()">Clear</button>
-        <button type="button" class="pk-btn" onclick="pinKeyPress('0')">0</button>
-        <button type="button" class="pk-btn pk-side" onclick="pinKeyBackspace()">⌫</button>
+
+    <div id="loginStepAccount">
+      <h2>Who's signing in?</h2>
+      <div class="user-tiles" id="userCards"></div>
+      <div class="login-divider"></div>
+      <div style="text-align:center">
+        <button onclick="doSupportLogin()" class="support-login-link">Support Login (View Only)</button>
       </div>
     </div>
-    <button class="login-btn" id="loginBtn" onclick="doLogin()">
-      <span>Sign In</span>
-    </button>
-    <div class="login-divider"></div>
-    <div style="text-align:center">
-      <button onclick="doSupportLogin()" style="background:none;border:none;cursor:pointer;color:#6b21a8;font-size:13px;font-weight:600;font-family:inherit;text-decoration:underline">Support Login (View Only)</button>
+
+    <div id="loginStepPin" class="hidden">
+      <button type="button" class="login-back" onclick="backToAccounts()">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+        Switch account
+      </button>
+      <div class="login-selected-emp" id="loginSelectedEmp"></div>
+      <div class="pin-group" id="pinGroup">
+        <input class="pin-input" type="password" id="pinInput" placeholder="Enter PIN" maxlength="8" inputmode="none" onkeydown="if(event.key==='Enter')doLogin()">
+        <div class="login-err" id="loginErr">Incorrect PIN. Try again.</div>
+        <div class="pin-keypad" id="pinKeypad">
+          <button type="button" class="pk-btn" onclick="pinKeyPress('1')">1</button>
+          <button type="button" class="pk-btn" onclick="pinKeyPress('2')">2</button>
+          <button type="button" class="pk-btn" onclick="pinKeyPress('3')">3</button>
+          <button type="button" class="pk-btn" onclick="pinKeyPress('4')">4</button>
+          <button type="button" class="pk-btn" onclick="pinKeyPress('5')">5</button>
+          <button type="button" class="pk-btn" onclick="pinKeyPress('6')">6</button>
+          <button type="button" class="pk-btn" onclick="pinKeyPress('7')">7</button>
+          <button type="button" class="pk-btn" onclick="pinKeyPress('8')">8</button>
+          <button type="button" class="pk-btn" onclick="pinKeyPress('9')">9</button>
+          <button type="button" class="pk-btn pk-side" onclick="pinKeyClear()">Clear</button>
+          <button type="button" class="pk-btn" onclick="pinKeyPress('0')">0</button>
+          <button type="button" class="pk-btn pk-side" onclick="pinKeyBackspace()">⌫</button>
+        </div>
+      </div>
+      <button class="login-btn" id="loginBtn" onclick="doLogin()">
+        <span>Sign In</span>
+      </button>
     </div>
   </div>
 </div>
@@ -427,7 +430,7 @@ input:checked+.slider:before{transform:translateX(16px)}
       <div class="nav-item hide-support" id="nav-completed" onclick="showPage('completed')">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>Completed
       </div>
-      <div class="nav-item hide-support" id="nav-intransit" onclick="showPage('intransit')">
+      <div class="nav-item" id="nav-intransit" onclick="showPage('intransit')">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 8h-3V4H3c-1.1 0-2 .9-2 2v11h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3-4zM6 18.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm13.5-9l1.96 2.5H17V9.5h2.5zM18 18.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>In Transit
       </div>
       <div class="nav-item hide-support" id="nav-support" onclick="showPage('support')">
@@ -590,7 +593,7 @@ input:checked+.slider:before{transform:translateX(16px)}
         <div class="sw"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
           <input class="search-input" id="transitSearch" placeholder="Search ZD ID, tracking #…" oninput="renderInTransit()">
         </div>
-        <button class="btn btn-ghost btn-sm" onclick="refreshAllInTransit()" id="transitRefreshAllBtn">Refresh All</button>
+        <button class="btn btn-ghost btn-sm hide-support" onclick="refreshAllInTransit()" id="transitRefreshAllBtn">Refresh All</button>
       </div>
       <div class="table-wrap">
         <div class="t-head" style="grid-template-columns:90px 1fr 130px 160px 120px">
@@ -1219,21 +1222,35 @@ function renderUserCards(){
   document.getElementById('userCards').innerHTML=_employees.map(function(e){
     var rTag={admin:'rt-admin',tech:'rt-tech',general:'rt-general'}[e.role]||'rt-tech';
     var rLabel={admin:'Admin',tech:'Tech',general:'Tester'}[e.role]||'Tech';
-    var rDesc={admin:'Full access',tech:'Repair access',general:'Testing access'}[e.role]||'Repair access';
-    return '<div class="user-card'+(selectedEmpId===e.id?' sel':'')+'" onclick="selectEmp(this.dataset.eid)" data-eid="'+e.id+'">' +
+    return '<div class="user-tile" onclick="selectEmp(this.dataset.eid)" data-eid="'+e.id+'">' +
       '<div class="av" style="background:'+e.color+';color:'+e.textColor+'">'+e.initials+'</div>' +
-      '<div class="ui"><strong>'+e.name+' <span class="role-tag '+rTag+'">'+rLabel+'</span></strong>' +
-      '<span>'+rDesc+'</span></div></div>';
+      '<strong>'+e.name+'</strong><span class="role-tag '+rTag+'">'+rLabel+'</span></div>';
   }).join('');
 }
+// One step visible at a time (pick account, then enter PIN) instead of
+// showing a scrolling account list and the PIN field at once - with more
+// than a few employees the old layout let the list clip awkwardly right
+// where the PIN box started.
 function selectEmp(id){
-  selectedEmpId=id;renderUserCards();
+  selectedEmpId=id;
+  var e=getEmp(id);if(!e)return;
+  var rTag={admin:'rt-admin',tech:'rt-tech',general:'rt-general'}[e.role]||'rt-tech';
+  var rLabel={admin:'Admin',tech:'Tech',general:'Tester'}[e.role]||'Tech';
+  document.getElementById('loginSelectedEmp').innerHTML=
+    '<div class="av" style="background:'+e.color+';color:'+e.textColor+'">'+e.initials+'</div>'+
+    '<div><strong>'+e.name+'</strong><span class="role-tag '+rTag+'">'+rLabel+'</span></div>';
+  document.getElementById('loginStepAccount').classList.add('hidden');
+  document.getElementById('loginStepPin').classList.remove('hidden');
   var pin=document.getElementById('pinInput');
-  pin.disabled=false;pin.placeholder='Enter PIN';pin.value='';
+  pin.value='';
   pin.focus();
-  var s1=document.getElementById('loginStep1'),s2=document.getElementById('loginStep2');
-  if(s1)s1.classList.add('active');if(s2)s2.classList.add('active');
-  var pg=document.getElementById('pinGroup');if(pg)pg.classList.remove('pin-group-inactive');
+  var err=document.getElementById('loginErr');if(err)err.style.display='none';
+}
+function backToAccounts(){
+  selectedEmpId=null;
+  document.getElementById('loginStepPin').classList.add('hidden');
+  document.getElementById('loginStepAccount').classList.remove('hidden');
+  var pin=document.getElementById('pinInput');if(pin)pin.value='';
   var err=document.getElementById('loginErr');if(err)err.style.display='none';
 }
 // On-screen numeric keypad for the PIN field - faster/more reliable to tap
@@ -1297,10 +1314,7 @@ function logout(){
   stopPolling();currentUser=null;selectedEmpId=null;isSupportMode=false;
   document.getElementById('app').style.display='none';
   document.getElementById('loginScreen').style.display='flex';
-  var pin=document.getElementById('pinInput');pin.value='';pin.disabled=true;pin.placeholder='Select an account above first';
-  document.getElementById('loginErr').style.display='none';
-  var s1=document.getElementById('loginStep1'),s2=document.getElementById('loginStep2');
-  if(s1)s1.classList.add('active');if(s2)s2.classList.remove('active');
+  backToAccounts();
   document.getElementById('supportBanner').classList.add('hidden');
   document.getElementById('newRepairBtn').style.display='';
   // Hide support-only nav
@@ -1416,7 +1430,7 @@ function showGlobalSearch(){
 
 function showPage(p){
   // Access control
-  if(isSupportMode&&p!=='supportview'&&p!=='dashboard'){return;}
+  if(isSupportMode&&p!=='supportview'&&p!=='dashboard'&&p!=='intransit'){return;}
   if(!isAdmin()&&(p==='stats'||p==='employees'||p==='activity'||p==='settings'||p==='askai')){return;}
   currentPage=p;
   document.querySelectorAll('[id^="page-"]').forEach(function(el){el.classList.add('hidden');});
@@ -2878,7 +2892,7 @@ function renderSupportView(){
   var el=document.getElementById('supportViewBody');if(!el)return;
   if(!data.length){el.innerHTML='<div class="empty"><p>No customer repairs found</p></div>';return;}
   el.innerHTML=data.map(function(r){
-    return'<div class="t-row" data-id="'+r.id+'" style="grid-template-columns:90px 1fr 150px 120px 100px" onclick="openSupportDetail(this.dataset.id)">'+
+    return'<div class="t-row" data-id="'+r.id+'" style="grid-template-columns:90px 1fr 150px 120px 100px" onclick="openDetail(this.dataset.id)">'+
       '<div class="tid">'+r.ticket+'</div>'+
       '<div class="dcell"><strong>'+(r.zdid||r.ordnum||'Customer Repair')+'</strong><span>ZD: '+(r.zdid||'--')+' - Order: '+(r.ordnum||'--')+'</span></div>'+
       '<div>'+statusBadge(r.status)+'</div>'+
@@ -2887,28 +2901,6 @@ function renderSupportView(){
   }).join('');
 }
 
-function openSupportDetail(id){
-  var r=_repairs.find(function(x){return x.id===id;});if(!r)return;
-  document.getElementById('d-ticket').textContent=r.ticket;
-  document.getElementById('d-title').textContent=r.zdid||r.ordnum||'Customer Repair';
-  document.getElementById('d-meta').innerHTML=statusBadge(r.status)+(r.warranty?'<span class="badge b-green">Warranty</span>':'')+outcomeBadge(r.outcome&&r.outcome.indexOf('other:')===0?'other':r.outcome);
-  var fields=[['Zendesk ID',r.zdid||'--'],['Order Number',r.ordnum||'--'],['Device Size',r.size||'--'],['Issue',r.issue||'--'],['Status',r.status||'--']];
-  if(r.closedAt)fields.push(['Closed At',fmt(r.closedAt)]);
-  document.getElementById('d-grid').innerHTML=fields.map(function(f){return'<div class="det-field"><label>'+f[0]+'</label><span>'+f[1]+'</span></div>';}).join('');
-  var rdSec=document.getElementById('d-repsdone-sec');
-  if(r.repairsDone){rdSec.classList.remove('hidden');document.getElementById('d-repsdone').textContent=r.repairsDone;}
-  else rdSec.classList.add('hidden');
-  // Notes hidden from support
-  document.getElementById('d-notes-sec').classList.add('hidden');
-  // Activity - only show Areeb's actions
-  var acts=_activity.filter(function(a){return a.ticket===r.ticket&&a.by==='areeb';}).slice(0,10);
-  document.getElementById('d-activity').innerHTML=acts.length?acts.map(function(a){
-    return'<div class="act-item"><div class="act-dot"></div><div class="act-c"><p>'+a.msg+'</p><span>'+fmt(a.at)+'</span></div></div>';
-  }).join(''):'<div style="color:var(--text3);font-size:13px;padding:8px 0">No activity yet</div>';
-  // No action buttons for support
-  document.getElementById('d-actions').innerHTML='';
-  document.getElementById('detailModal').classList.remove('hidden');
-}
 
 // Lightweight keyword-based issue categorization - no external/AI dependency.
 // Falls back to "Other" when nothing matches, "Uncategorized" when there's
