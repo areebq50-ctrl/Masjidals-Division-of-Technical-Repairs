@@ -87,6 +87,16 @@ change I can make whenever you want it.
     silently if that's not set, same as everything else here).
   Needs `ZENDESK_*`/`SHOPIFY_*` env vars (see below) - does nothing until
   then. Read-only: never writes anything back to Zendesk or Shopify.
+- **Daily Update** button (top bar) - drafts the team-chat status message
+  you'd otherwise type by hand, from customer repairs you created and/or
+  closed today (e.g. `ZD 13140 | Order #29422 - @Afroz Masjidal Customer
+  says the device turns on and off... Tracking: 1ZGW30800313247576`).
+  Gemini writes only the narrative sentence per ticket; the ZD id, order
+  number, @mention, and tracking number are always assembled from the
+  actual repair data, never left to the model. Nothing is posted
+  automatically - it opens in a modal with a Copy button, you paste it
+  wherever you send these today. Needs `GEMINI_API_KEY` (already required
+  for Masjidal AI above); does nothing until then.
 - **Numeric PIN keypad** on the login screen - faster to tap on a shop-floor
   phone/tablet than the native keyboard. Physical keyboard typing still works.
 - **Delivered vs Awaiting Delivery filter** on Completed Repairs, using the

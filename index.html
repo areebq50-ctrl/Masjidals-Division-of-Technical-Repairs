@@ -479,6 +479,9 @@ input:checked+.slider:before{transform:translateX(16px)}
       </div>
       <div style="display:flex;align-items:center;gap:12px">
         <div class="sync-status" id="syncStatus"><span class="sync-dot" id="syncDot"></span><span id="syncText">Live</span></div>
+        <button class="btn btn-ghost hide-support" id="dailyDigestBtn" onclick="openDailyDigest()">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/></svg>Daily Update
+        </button>
         <button class="btn btn-ghost admin-only" id="askAIBtn" onclick="showPage('askai')">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8L12 2z"/></svg>Masjidal AI
         </button>
@@ -929,6 +932,21 @@ input:checked+.slider:before{transform:translateX(16px)}
       <div class="fg" id="empVisGroup"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:400;margin-bottom:8px"><input type="checkbox" id="emp-seecust" style="width:16px;height:16px" onchange="syncCustPermChecks('full')"> Allow user to create and edit customer repairs</label><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:400"><input type="checkbox" id="emp-viewonly" style="width:16px;height:16px" onchange="syncCustPermChecks('view')"> Allow user to view customer repairs only</label></div>
     </div>
     <div class="modal-foot"><button class="btn btn-ghost" onclick="closeEmpModal()">Cancel</button><button class="btn btn-primary" onclick="saveEmp()">Save</button></div>
+  </div>
+</div>
+
+<!-- DAILY UPDATE MODAL -->
+<div class="overlay hidden" id="digestModal" onclick="if(event.target===this)closeDigestModal()">
+  <div class="modal modal-wide">
+    <div class="modal-hdr"><h2>Daily Update</h2><button class="mc" onclick="closeDigestModal()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button></div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--text2);margin-bottom:14px">Drafted from repairs you created or closed today (<span id="digestDate"></span>). Review before sending - nothing is posted automatically.</p>
+      <textarea class="fc" id="digestOutput" readonly style="min-height:280px;font-family:inherit;line-height:1.5;resize:vertical"></textarea>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="openDailyDigest()">Regenerate</button>
+      <button class="btn btn-primary" onclick="copyDigestText()">Copy to Clipboard</button>
+    </div>
   </div>
 </div><script>
 var SB_URL = 'https://aafszbfonkhwgiykwqrz.supabase.co';
@@ -1736,6 +1754,99 @@ async function askAI(){
 function getTracking(r){
   if(!r||!r.tracking)return null;
   try{return typeof r.tracking==='string'?JSON.parse(r.tracking):r.tracking;}catch(e){return null;}
+}
+
+function getAssignedTo(r){
+  if(r.assignedTo)return r.assignedTo;
+  var m=(r.notes||'').match(/^\[([^\]]*)\]\s*/);
+  if(m){
+    var parts=m[1].split('|');
+    for(var i=0;i<parts.length;i++){
+      var p=parts[i].trim();
+      if(p.indexOf('ASSIGN:')===0)return p.substring(7);
+    }
+  }
+  return'';
+}
+function isToday(iso){
+  if(!iso)return false;
+  var d=new Date(iso),now=new Date();
+  return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth()&&d.getDate()===now.getDate();
+}
+// "Daily Update" - drafts the team-chat status message an employee would
+// otherwise type by hand, from customer repairs they created and/or closed
+// today. The AI only writes the narrative sentence per ticket - the ZD id,
+// order number, @mention, and tracking number are assembled here from the
+// actual repair data, never left to the model, so those can't get garbled.
+function closeDigestModal(){document.getElementById('digestModal').classList.add('hidden');}
+async function openDailyDigest(){
+  var modal=document.getElementById('digestModal');
+  var out=document.getElementById('digestOutput');
+  var dateEl=document.getElementById('digestDate');
+  if(dateEl)dateEl.textContent=new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  modal.classList.remove('hidden');
+  out.value='Gathering today\'s tickets…';
+
+  var todays=_repairs.filter(function(r){
+    if(r.type!=='customer')return false;
+    var createdToday=r.createdBy===currentUser&&isToday(r.createdAt);
+    var closedToday=r.closedBy===currentUser&&isToday(r.closedAt);
+    return createdToday||closedToday;
+  });
+
+  if(!todays.length){
+    out.value='No customer repairs created or closed by you today yet.';
+    return;
+  }
+
+  out.value='Drafting update for '+todays.length+' ticket'+(todays.length===1?'':'s')+'…';
+
+  var tickets=todays.map(function(r){
+    var tr=getTracking(r);
+    return {
+      ticketId:r.id,
+      status:r.status,
+      issue:r.issue||'',
+      outcomeText:r.status==='Closed'?getFullOutcomeText(r.outcome):'',
+      closingNotes:r.repairsDone||'',
+      hasTracking:!!(tr&&tr.number),
+      isNewToday:r.createdBy===currentUser&&isToday(r.createdAt),
+      isClosedToday:r.closedBy===currentUser&&isToday(r.closedAt)
+    };
+  });
+
+  try{
+    var resp=await fetch('/api/generate-digest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tickets:tickets})});
+    var data=await resp.json();
+    if(!resp.ok||data.lines===null){
+      out.value=data.message||data.detail||data.error||'Could not generate the update right now.';
+      return;
+    }
+    var byId={};
+    (data.lines||[]).forEach(function(l){byId[l.ticketId]=l.text;});
+    var lines=todays.map(function(r){
+      var text=byId[r.id]||'';
+      var assignTo=getAssignedTo(r);
+      var mention=assignTo?('@'+assignTo+' Masjidal '):'';
+      var header=r.zdid?('ZD '+r.zdid+(r.ordnum?' | Order #'+r.ordnum:'')):(r.ordnum?'Order #'+r.ordnum:r.ticket);
+      var tr=getTracking(r);
+      var trackingSuffix=(tr&&tr.number)?' Tracking: '+tr.number:'';
+      return header+' - '+mention+text+trackingSuffix;
+    });
+    out.value=lines.join('\n\n');
+  }catch(e){
+    console.error(e);
+    out.value='Could not generate the update right now - check your connection and try again.';
+  }
+}
+function copyDigestText(){
+  var out=document.getElementById('digestOutput');
+  out.select();
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(out.value).then(function(){toast('Copied to clipboard');}).catch(function(){toast('Could not copy - select and copy manually.');});
+  }else{
+    try{document.execCommand('copy');toast('Copied to clipboard');}catch(e){toast('Could not copy - select and copy manually.');}
+  }
 }
 function renderCompleted(){
   if(!currentUser)return;
@@ -3121,7 +3232,7 @@ async function confirmReset(){
 
 function toggleSidebar(){var sb=document.getElementById('sidebar');var ov=document.getElementById('sidebarOverlay');var open=sb.classList.toggle('open');ov.style.display=open?'block':'none';}
 function closeSidebar(){if(window.innerWidth<=700){var sb=document.getElementById('sidebar');var ov=document.getElementById('sidebarOverlay');if(sb)sb.classList.remove('open');if(ov)ov.style.display='none';}}
-document.addEventListener('keydown',function(e){if(e.key==='Escape')['repairModal','detailModal','closeModal','trackModal','empModal'].forEach(function(id){var el=document.getElementById(id);if(el)el.classList.add('hidden');});});
+document.addEventListener('keydown',function(e){if(e.key==='Escape')['repairModal','detailModal','closeModal','trackModal','empModal','digestModal'].forEach(function(id){var el=document.getElementById(id);if(el)el.classList.add('hidden');});});
 
 async function initApp(){
   setLoading('Connecting to cloud...');
