@@ -96,13 +96,20 @@ change I can make whenever you want it.
   turns on and off... Tracking: 1ZGW30800313247576`. Each line always
   covers the issue reported and what was done about it - prefers the
   **Repair Notes** field (the technician's own freeform "what I did"
-  notes) for specific detail when it's filled in, falling back to the
-  outcome/closing notes otherwise. Gemini only writes those two parts; the
-  ZD id, order number, @mention, and tracking number are always assembled
-  from the actual repair data, never left to the model. Nothing is posted
-  automatically - it opens in a modal with a Copy button, you paste it
-  wherever you send these today. Needs `GEMINI_API_KEY` (already required
-  for Masjidal AI above); does nothing until then.
+  notes) for specific detail when it's filled in, and also pulls in
+  relevant detail from **Additional Notes** (ignoring anything that reads
+  like an internal-only aside, e.g. "ask Areeb first"), falling back to
+  the outcome/closing notes otherwise. A repair only gets described as
+  "done"/"completed"/"resolved" once the ticket is actually **Closed** -
+  a status like "Completed Testing" only means the device moved to the
+  testing shelf, not that testing itself is finished, so the message says
+  something like "device is testing" for that case instead. Gemini only
+  writes the issue-summary and resolution text; the ZD id, order number,
+  @mention, and tracking number are always assembled from the actual
+  repair data, never left to the model. Nothing is posted automatically -
+  it opens in a modal with a Copy button, you paste it wherever you send
+  these today. Needs `GEMINI_API_KEY` (already required for Masjidal AI
+  above); does nothing until then.
 - **Order Number is now optional** on customer repairs (previously
   required) - some tickets genuinely don't have one.
 - **Numeric PIN keypad** on the login screen - faster to tap on a shop-floor

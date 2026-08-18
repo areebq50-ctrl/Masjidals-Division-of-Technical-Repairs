@@ -1773,6 +1773,15 @@ function isToday(iso){
   var d=new Date(iso),now=new Date();
   return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth()&&d.getDate()===now.getDate();
 }
+// "Additional Notes" strips the leading [YEAR:...|AND:...|ASSIGN:...] metadata
+// block and the [TV:0]/[TV:1] tech-visibility flag, same as openDetail() does
+// for display - this is the raw free-text an employee actually typed.
+function getCleanNotes(r){
+  var n=r.notes||'';
+  n=n.replace(/^\[[^\]]*\]\s*/,'');
+  n=n.replace(/\[TV:[01]\]\s*/g,'');
+  return n.trim();
+}
 // "Daily Update" - drafts the team-chat status message an employee would
 // otherwise type by hand, from customer repairs they created and/or closed
 // today. The AI only writes the narrative sentence per ticket - the ZD id,
@@ -1827,9 +1836,11 @@ async function openDailyDigest(){
     return {
       ticketId:r.id,
       status:r.status,
+      isClosed:r.status==='Closed',
       issue:r.issue||'',
       outcomeText:r.status==='Closed'?getFullOutcomeText(r.outcome):'',
       repairNotes:r.repairNotes||'',
+      notes:getCleanNotes(r),
       closingNotes:r.repairsDone||'',
       isNewToday:r.createdBy===currentUser&&isToday(r.createdAt),
       isClosedToday:r.closedBy===currentUser&&isToday(r.closedAt)
