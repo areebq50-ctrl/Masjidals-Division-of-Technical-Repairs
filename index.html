@@ -1768,6 +1768,22 @@ function getAssignedTo(r){
   }
   return'';
 }
+// saveRepair() never writes a dedicated repairNotes column - "Repair Notes"
+// is always encoded as REPNOTES:... inside the notes metadata bracket (see
+// openEdit()'s _repNotes parsing). r.repairNotes is therefore always empty;
+// this is the actual place to read it from.
+function getRepairNotesText(r){
+  if(r.repairNotes)return r.repairNotes;
+  var m=(r.notes||'').match(/^\[([^\]]*)\]\s*/);
+  if(m){
+    var parts=m[1].split('|');
+    for(var i=0;i<parts.length;i++){
+      var p=parts[i].trim();
+      if(p.indexOf('REPNOTES:')===0)return p.substring(9);
+    }
+  }
+  return'';
+}
 function isToday(iso){
   if(!iso)return false;
   var d=new Date(iso),now=new Date();
@@ -1839,7 +1855,7 @@ async function openDailyDigest(){
       isClosed:r.status==='Closed',
       issue:r.issue||'',
       outcomeText:r.status==='Closed'?getFullOutcomeText(r.outcome):'',
-      repairNotes:r.repairNotes||'',
+      repairNotes:getRepairNotesText(r),
       notes:getCleanNotes(r),
       closingNotes:r.repairsDone||'',
       isNewToday:r.createdBy===currentUser&&isToday(r.createdAt),
