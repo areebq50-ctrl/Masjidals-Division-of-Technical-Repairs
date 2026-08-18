@@ -1778,6 +1778,18 @@ function isToday(iso){
 // today. The AI only writes the narrative sentence per ticket - the ZD id,
 // order number, @mention, and tracking number are assembled here from the
 // actual repair data, never left to the model, so those can't get garbled.
+//
+// "Today's tickets" = any customer repair whose STATUS you changed today
+// (created, edited to a new status, closed, or reopened) - not just ones
+// you happened to create or close. Every status-changing action already
+// writes an entry to the activity log (see logAct() call sites: create,
+// "Status: X to Y" on edit, close, reopen), each tagged with who did it and
+// when - so that log is the source of truth here, not just
+// createdBy/closedBy on the repair record itself.
+function isStatusChangeActivityMsg(msg){
+  msg=msg||'';
+  return /status:/i.test(msg)||/created .*repair/i.test(msg)||/closed ticket/i.test(msg)||/reopened ticket/i.test(msg);
+}
 function closeDigestModal(){document.getElementById('digestModal').classList.add('hidden');}
 async function openDailyDigest(){
   var modal=document.getElementById('digestModal');
@@ -1787,29 +1799,36 @@ async function openDailyDigest(){
   modal.classList.remove('hidden');
   out.value='Gathering today\'s tickets…';
 
+  // Activity Log only gets fetched when someone visits that admin page -
+  // refresh it here so this works regardless of what page you're on.
+  try{await loadActivity();}catch(e){console.error(e);}
+
+  var changedTicketNums={};
+  _activity.forEach(function(a){
+    if(a.by!==currentUser)return;
+    if(!isToday(a.at))return;
+    if(!isStatusChangeActivityMsg(a.msg))return;
+    changedTicketNums[a.ticket]=true;
+  });
+
   var todays=_repairs.filter(function(r){
-    if(r.type!=='customer')return false;
-    var createdToday=r.createdBy===currentUser&&isToday(r.createdAt);
-    var closedToday=r.closedBy===currentUser&&isToday(r.closedAt);
-    return createdToday||closedToday;
+    return r.type==='customer'&&changedTicketNums[r.ticket];
   });
 
   if(!todays.length){
-    out.value='No customer repairs created or closed by you today yet.';
+    out.value='No customer repairs had their status changed by you today yet.';
     return;
   }
 
   out.value='Drafting update for '+todays.length+' ticket'+(todays.length===1?'':'s')+'…';
 
   var tickets=todays.map(function(r){
-    var tr=getTracking(r);
     return {
       ticketId:r.id,
       status:r.status,
       issue:r.issue||'',
       outcomeText:r.status==='Closed'?getFullOutcomeText(r.outcome):'',
       closingNotes:r.repairsDone||'',
-      hasTracking:!!(tr&&tr.number),
       isNewToday:r.createdBy===currentUser&&isToday(r.createdAt),
       isClosedToday:r.closedBy===currentUser&&isToday(r.closedAt)
     };
@@ -1823,7 +1842,7 @@ async function openDailyDigest(){
       return;
     }
     var byId={};
-    (data.lines||[]).forEach(function(l){byId[l.ticketId]=l.text;});
+    (data.lines||[]).forEach(function(l){byId[l.ticketId]=[l.issueSummary,l.resolution].filter(Boolean).join(' ');});
     var lines=todays.map(function(r){
       var text=byId[r.id]||'';
       var assignTo=getAssignedTo(r);

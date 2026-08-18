@@ -88,10 +88,12 @@ change I can make whenever you want it.
   Needs `ZENDESK_*`/`SHOPIFY_*` env vars (see below) - does nothing until
   then. Read-only: never writes anything back to Zendesk or Shopify.
 - **Daily Update** button (top bar) - drafts the team-chat status message
-  you'd otherwise type by hand, from customer repairs you created and/or
-  closed today (e.g. `ZD 13140 | Order #29422 - @Afroz Masjidal Customer
-  says the device turns on and off... Tracking: 1ZGW30800313247576`).
-  Gemini writes only the narrative sentence per ticket; the ZD id, order
+  you'd otherwise type by hand, for every customer repair whose status you
+  changed today - created, edited to a new status, closed, or reopened, not
+  just ones you personally created or closed (e.g. `ZD 13140 | Order #29422
+  - @Afroz Masjidal Customer says the device turns on and off... Tracking:
+  1ZGW30800313247576`). Each line always covers the issue reported and what
+  was done about it. Gemini only writes those two parts; the ZD id, order
   number, @mention, and tracking number are always assembled from the
   actual repair data, never left to the model. Nothing is posted
   automatically - it opens in a modal with a Copy button, you paste it
