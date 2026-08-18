@@ -1,11 +1,15 @@
 // POST /api/generate-digest -> /.netlify/functions/generate-digest
-// Body: { tickets: [{ ticketId, status, issue, outcomeText, closingNotes,
-//   isNewToday, isClosedToday }] } - drafts the "Daily Update" message an
-// employee posts to the team, in the shop's existing style (see
-// index.html's openDailyDigest() for the exact examples this is modeled
-// on). `ticketId` is an opaque correlation key (the repair's internal id,
-// NOT the Zendesk ticket number) used only to match each drafted line back
-// to the right repair - it means nothing to the model semantically.
+// Body: { tickets: [{ ticketId, status, issue, outcomeText, repairNotes,
+//   closingNotes, isNewToday, isClosedToday }] } - drafts the "Daily
+// Update" message an employee posts to the team, in the shop's existing
+// style (see index.html's openDailyDigest() for the exact examples this is
+// modeled on). `ticketId` is an opaque correlation key (the repair's
+// internal id, NOT the Zendesk ticket number) used only to match each
+// drafted line back to the right repair - it means nothing to the model
+// semantically. `repairNotes` is the shop's own "what did you do to repair
+// the device" field (freeform, entered any time during the repair, not
+// just at close) - it's the best source for specific technical detail
+// (diagnosis, parts swapped, steps tried), when present.
 //
 // Response is { lines: [{ ticketId, issueSummary, resolution }] } - two
 // separate required fields rather than one freeform blob, specifically so
@@ -39,16 +43,17 @@ var RESPONSE_SCHEMA = {
 };
 
 var SYSTEM_PROMPT = 'You write brief internal status-update sentences for a device repair shop\'s team chat, describing what\'s going on with a repair ticket - for a teammate skimming a daily digest, not the customer. ' +
-  'You will be given a JSON array of tickets, each with a "ticketId" (an opaque key for matching your response back to the right ticket - it has no other meaning, do not reference it in the text) plus an "issue" field (what the customer reported - this is a REQUIRED field on every ticket, so it is never actually empty) and outcome/closing-notes/status fields describing what was done. ' +
+  'You will be given a JSON array of tickets, each with a "ticketId" (an opaque key for matching your response back to the right ticket - it has no other meaning, do not reference it in the text), an "issue" field (what the customer reported - this is a REQUIRED field on every ticket, so it is never actually empty), and fields describing what was done: "repairNotes" (the technician\'s own freeform notes on the specific diagnostic/repair steps taken - parts replaced, things tried, test results - the best and most specific source when present), "outcomeText" (the ticket\'s resolution category if closed), "closingNotes", and "status". ' +
   'Return one entry per ticket (same ticketId) with exactly two separate fields:\n' +
   '- "issueSummary": one short clause or sentence putting the "issue" field into your own words. This field is REQUIRED and must never be left empty or skipped - the ticket always has issue text, so always summarize it.\n' +
-  '- "resolution": one to two short sentences on what was done, or is being done, about it - based on outcomeText/closingNotes/status.\n' +
-  'Match this exact tone - these are real examples of the combined style (issue then resolution) to write in:\n' +
-  '- "Customer says that the device turns on and off. When I test its normal, however we will continue to test this device. We will instead ship a replacement to the customer. It will be shipped today."\n' +
+  '- "resolution": one to three short sentences on what was done, or is being done, about it. PREFER repairNotes when it\'s present - use its specific technical detail (what was tried, what was replaced, current status like "device is testing") rather than just restating outcomeText generically. Fall back to outcomeText/closingNotes/status when repairNotes is empty.\n' +
+  'Match this exact tone - these are real examples of the combined style (issue then specific resolution) to write in:\n' +
+  '- "Customer reports the media player audio cuts out when the screen turns off and occasionally plays overlapping tracks that cannot be paused. I tried flashing but it failed so I replaced the motherboard. Device is testing."\n' +
+  '- "Customer reported the frame freezes, crashes repeatedly, and currently shows a blank screen while powered on. Device was flashed. It will be testing for a couple days to ensure everything works as expected."\n' +
   '- "Customer requested a refund. Refund has been processed."\n' +
   '- "Customer reported the device was defective on arrival. We will issue a replacement device. UPS has already come to pick-up shipping so replacement will go out on Wednesday."\n' +
   'Rules: plain and direct, no greetings or sign-offs. ' +
-  'Base both fields ONLY on the data given - never invent a detail, a date, or a reason that isn\'t there. ' +
+  'Base both fields ONLY on the data given - never invent a detail, a date, a part, or a repair step that isn\'t there. ' +
   'NEVER include the ZD number, order number, tracking number, a customer name, or an @mention in either field - those are added separately by the app (a ticket with tracking will have it appended after your text, so don\'t restate or hint at the number yourself). NEVER mention attachments or screenshots - none are actually attached.';
 
 exports.handler = async function (event) {

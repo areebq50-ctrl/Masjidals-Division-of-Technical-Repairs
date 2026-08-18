@@ -87,18 +87,24 @@ change I can make whenever you want it.
     silently if that's not set, same as everything else here).
   Needs `ZENDESK_*`/`SHOPIFY_*` env vars (see below) - does nothing until
   then. Read-only: never writes anything back to Zendesk or Shopify.
-- **Daily Update** button (top bar) - drafts the team-chat status message
-  you'd otherwise type by hand, for every customer repair whose status you
-  changed today - created, edited to a new status, closed, or reopened, not
-  just ones you personally created or closed (e.g. `ZD 13140 | Order #29422
-  - @Afroz Masjidal Customer says the device turns on and off... Tracking:
-  1ZGW30800313247576`). Each line always covers the issue reported and what
-  was done about it. Gemini only writes those two parts; the ZD id, order
-  number, @mention, and tracking number are always assembled from the
-  actual repair data, never left to the model. Nothing is posted
+- **Daily Update** button (top bar) - drafts the WhatsApp-ready team status
+  message you'd otherwise type by hand, for every customer repair whose
+  status you changed today - created, edited to a new status, closed, or
+  reopened, not just ones you personally created or closed. Bolded title +
+  bolded `*ZD 13140 | Order #29422*` per ticket, e.g.:
+  `*ZD 13140 | Order #29422* - @Afroz Masjidal Customer says the device
+  turns on and off... Tracking: 1ZGW30800313247576`. Each line always
+  covers the issue reported and what was done about it - prefers the
+  **Repair Notes** field (the technician's own freeform "what I did"
+  notes) for specific detail when it's filled in, falling back to the
+  outcome/closing notes otherwise. Gemini only writes those two parts; the
+  ZD id, order number, @mention, and tracking number are always assembled
+  from the actual repair data, never left to the model. Nothing is posted
   automatically - it opens in a modal with a Copy button, you paste it
   wherever you send these today. Needs `GEMINI_API_KEY` (already required
   for Masjidal AI above); does nothing until then.
+- **Order Number is now optional** on customer repairs (previously
+  required) - some tickets genuinely don't have one.
 - **Numeric PIN keypad** on the login screen - faster to tap on a shop-floor
   phone/tablet than the native keyboard. Physical keyboard typing still works.
 - **Delivered vs Awaiting Delivery filter** on Completed Repairs, using the

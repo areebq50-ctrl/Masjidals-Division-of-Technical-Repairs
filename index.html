@@ -714,7 +714,7 @@ input:checked+.slider:before{transform:translateX(16px)}
       <div id="customerFields">
         <div class="form-row">
           <div class="fg"><label>Zendesk ID <span style="color:var(--red)">*</span></label><input class="fc" id="f-zdid" placeholder="12345" oninput="checkRelatedTickets()" onblur="autoLookupCustomer()"></div>
-          <div class="fg"><label>Order Number <span style="color:var(--red)">*</span></label><input class="fc" id="f-ordnum" placeholder="#12345" oninput="checkRelatedTickets()" onblur="autoLookupCustomer()"></div>
+          <div class="fg"><label>Order Number</label><input class="fc" id="f-ordnum" placeholder="#12345 (optional)" oninput="checkRelatedTickets()" onblur="autoLookupCustomer()"></div>
         </div>
         <div class="fg hidden" id="relatedTicketBanner" style="background:var(--accent-light);border:1px solid var(--accent);border-radius:8px;padding:10px 12px;font-size:12px;margin-bottom:14px;color:var(--accent)"></div>
         <div class="form-row">
@@ -1795,7 +1795,8 @@ async function openDailyDigest(){
   var modal=document.getElementById('digestModal');
   var out=document.getElementById('digestOutput');
   var dateEl=document.getElementById('digestDate');
-  if(dateEl)dateEl.textContent=new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  var now=new Date();
+  if(dateEl)dateEl.textContent=now.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
   modal.classList.remove('hidden');
   out.value='Gathering today\'s tickets…';
 
@@ -1828,6 +1829,7 @@ async function openDailyDigest(){
       status:r.status,
       issue:r.issue||'',
       outcomeText:r.status==='Closed'?getFullOutcomeText(r.outcome):'',
+      repairNotes:r.repairNotes||'',
       closingNotes:r.repairsDone||'',
       isNewToday:r.createdBy===currentUser&&isToday(r.createdAt),
       isClosedToday:r.closedBy===currentUser&&isToday(r.closedAt)
@@ -1843,6 +1845,9 @@ async function openDailyDigest(){
     }
     var byId={};
     (data.lines||[]).forEach(function(l){byId[l.ticketId]=[l.issueSummary,l.resolution].filter(Boolean).join(' ');});
+    // WhatsApp formats *text* as bold - bold the title and each ticket's
+    // ZD/order header so it's ready to paste straight into the chat.
+    var titleDate=(now.getMonth()+1)+'/'+now.getDate();
     var lines=todays.map(function(r){
       var text=byId[r.id]||'';
       var assignTo=getAssignedTo(r);
@@ -1850,9 +1855,9 @@ async function openDailyDigest(){
       var header=r.zdid?('ZD '+r.zdid+(r.ordnum?' | Order #'+r.ordnum:'')):(r.ordnum?'Order #'+r.ordnum:r.ticket);
       var tr=getTracking(r);
       var trackingSuffix=(tr&&tr.number)?' Tracking: '+tr.number:'';
-      return header+' - '+mention+text+trackingSuffix;
+      return '*'+header+'*'+' - '+mention+text+trackingSuffix;
     });
-    out.value=lines.join('\n\n');
+    out.value='*DAILY UPDATE '+titleDate+'*\n\n'+lines.join('\n\n');
   }catch(e){
     console.error(e);
     out.value='Could not generate the update right now - check your connection and try again.';
@@ -2712,7 +2717,6 @@ async function saveRepair(){
   if(!document.getElementById('f-android').value){alert('Android version is required.');return;}
   if(t==='customer'){
     if(!document.getElementById('f-zdid').value.trim()){alert('Zendesk ID is required.');return;}
-    if(!document.getElementById('f-ordnum').value.trim()){alert('Order Number is required.');return;}
     var sc=document.getElementById('f-size-cust');if(sc&&!sc.value){alert('Device size is required.');return;}
     var lc=document.getElementById('f-location-cust');if(lc&&!lc.value.trim()){alert('Device location is required.');return;}
   } else {
