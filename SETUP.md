@@ -62,7 +62,34 @@ want this to actually be enforced everywhere consistently, it'd need a real
 switched to read/write it there instead of localStorage - a small, safe
 change I can make whenever you want it.
 
+## ⚠️ Action required: run `supabase/create-parts-inventory.sql`
+
+New feature (Parts Inventory, below) needs two new tables that don't exist
+in your database yet - the page will show a "Could not load Parts
+Inventory" toast until you run this:
+
+1. Open your Supabase project → **SQL Editor** → **New query**.
+2. Paste in the contents of `supabase/create-parts-inventory.sql` from this
+   repo and run it. Safe to re-run, doesn't touch any existing data.
+
 ## What changed (latest batch)
+
+- **Parts Inventory** (new sidebar page, Admin + General employees only -
+  not Technicians, not Support) - tracks screens, motherboards, WiFi
+  antennas, and any other Athan Frame part, organized as Size → Year →
+  Firmware → parts, since firmware differs by that combination. Each part
+  has a running quantity, a Reorder At threshold (flagged as **Low Stock**
+  once quantity drops to or below it, shown in a callout at the top so
+  reordering is a glance, not a hunt), and every restock/use is logged with
+  who/when/how many/an optional note (e.g. "ZD 13082" or a PO number) - the
+  **Most Used** callout is built from that log, so it reflects real usage,
+  not a guess. Add a part with "Add Part"; adjust stock with the +/- icons
+  on its row (never by editing the number directly, so the usage history
+  stays accurate); Edit changes the size/year/firmware/type/name/reorder
+  point but not the quantity, for the same reason. Needs the
+  `supabase/create-parts-inventory.sql` migration above.
+
+## What changed (previous batch)
 
 - **Follow-up/linked tickets.** When creating a customer repair, if the
   Zendesk ID or Order Number entered matches an existing ticket, a banner

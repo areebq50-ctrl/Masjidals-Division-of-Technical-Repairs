@@ -191,6 +191,25 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);-we
 .outcome-cell{display:flex;flex-wrap:wrap;gap:4px;align-items:center;min-width:0}
 .outcome-cell .badge{min-width:0}
 
+/* PARTS INVENTORY */
+.parts-size{background:#fff;border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:12px;overflow:hidden}
+.parts-size>summary{padding:13px 16px;cursor:pointer;font-weight:700;font-size:14px;list-style:none;display:flex;align-items:center;justify-content:space-between;background:var(--surface2)}
+.parts-year{margin:10px 14px;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.parts-year>summary{padding:10px 14px;cursor:pointer;font-weight:600;font-size:13px;list-style:none;display:flex;align-items:center;justify-content:space-between}
+.parts-fw{margin:8px 12px 8px 20px;border:1px solid #eee;border-radius:8px;overflow:hidden}
+.parts-fw>summary{padding:9px 13px;cursor:pointer;font-weight:600;font-size:12.5px;list-style:none;display:flex;align-items:center;justify-content:space-between;color:var(--text2)}
+.parts-size>summary::-webkit-details-marker,.parts-year>summary::-webkit-details-marker,.parts-fw>summary::-webkit-details-marker{display:none}
+.parts-count{font-weight:400;color:var(--text3);font-size:11px}
+.parts-table{width:100%;border-collapse:collapse;font-size:12.5px}
+.parts-table th{text-align:left;padding:8px 13px;background:var(--surface2);font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--text3);white-space:nowrap}
+.parts-table td{padding:8px 13px;border-top:1px solid #f3f4f6;white-space:nowrap}
+.parts-callout{border-radius:var(--radius);padding:12px 16px;margin-bottom:14px;font-size:12.5px}
+.parts-callout.low{background:var(--red-bg);border:1px solid #fca5a5}
+.parts-callout.used{background:var(--surface2);border:1px solid var(--border)}
+.parts-callout h4{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px}
+.parts-callout.low h4{color:var(--red)}
+.parts-callout-row{display:flex;justify-content:space-between;align-items:center;padding:4px 0}
+
 /* BADGES */
 .badge{display:inline-flex;align-items:center;font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
 .b-green{background:var(--green-bg);color:var(--green)}
@@ -449,6 +468,9 @@ input:checked+.slider:before{transform:translateX(16px)}
       <div class="nav-item admin-only" id="nav-employees" onclick="showPage('employees')">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>Employees
       </div>
+      <div class="nav-item hide-support" id="nav-parts" onclick="showPage('parts')">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.12-.36.18-.57.18s-.41-.06-.57-.18l-7.9-4.44A.991.991 0 0 1 3 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.12.36-.18.57-.18s.41.06.57.18l7.9 4.44c.32.17.53.5.53.88v9M12 4.15L6.04 7.5 12 10.85l5.96-3.35L12 4.15M5 15.91l6 3.38v-6.71L5 9.21v6.7m14 0v-6.7l-6 3.37v6.71l6-3.38z"/></svg>Parts Inventory
+      </div>
       <div class="nav-item admin-only" id="nav-activity" onclick="showPage('activity')">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2.05v2.02c3.95.49 7 3.85 7 7.93 0 3.21-1.81 6-4.72 7.72L13 17v5h5l-1.22-1.22C19.91 19.07 22 15.76 22 12c0-5.18-3.94-9.45-9-9.95zM11 2.05C5.95 2.55 2 6.82 2 12c0 3.76 2.09 7.07 5.22 8.78L6 22h5V2.05z"/></svg>Activity Log
       </div>
@@ -666,6 +688,17 @@ input:checked+.slider:before{transform:translateX(16px)}
         <button class="btn btn-primary" onclick="openAddEmp()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>Add Employee</button>
       </div>
       <div class="emp-cards" id="empCards"></div>
+    </div>
+
+    <div class="content hidden" id="page-parts">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+        <div><div style="font-size:15px;font-weight:700">Parts Inventory</div><div style="font-size:12px;color:var(--text2);margin-top:2px">Screens, motherboards, and other Athan Frame parts - by size, year, and firmware</div></div>
+        <button class="btn btn-primary" onclick="openAddPart()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>Add Part</button>
+      </div>
+      <div class="stats-grid" id="partsStats" style="margin-bottom:18px"></div>
+      <div id="partsLowStock"></div>
+      <div id="partsMostUsed"></div>
+      <div id="partsTree"></div>
     </div>
 
     <div class="content hidden admin-only" id="page-activity">
@@ -935,6 +968,45 @@ input:checked+.slider:before{transform:translateX(16px)}
   </div>
 </div>
 
+<!-- PARTS INVENTORY: ADD/EDIT PART MODAL -->
+<div class="overlay hidden" id="partModal" onclick="if(event.target===this)closePartModal()">
+  <div class="modal modal-sm">
+    <div class="modal-hdr"><h2 id="partModalTitle">Add Part</h2><button class="mc" onclick="closePartModal()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button></div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="fg"><label>Device Size <span style="color:var(--red)">*</span></label>
+          <select class="fc" id="part-size"><option value="">Select size</option><option value='8"'>8"</option><option value='10"'>10"</option><option value='10" L (White)'>10" L (White)</option><option value='14"'>14"</option><option value='14" L (White)'>14" L (White)</option></select>
+        </div>
+        <div class="fg"><label>Device Year <span style="color:var(--red)">*</span></label><select class="fc" id="part-year"><option value="">Select year</option></select></div>
+      </div>
+      <div class="fg"><label>Firmware <span style="color:var(--red)">*</span></label><input class="fc" id="part-firmware" placeholder="e.g. v2.3.1"></div>
+      <div class="form-row">
+        <div class="fg"><label>Part Type <span style="color:var(--red)">*</span></label><input class="fc" id="part-type" list="partTypeList" placeholder="e.g. Screen, Motherboard, WiFi Antenna"><datalist id="partTypeList"></datalist></div>
+        <div class="fg"><label>Part Name / Model</label><input class="fc" id="part-name" placeholder="optional"></div>
+      </div>
+      <div class="form-row">
+        <div class="fg" id="partQtyGroup"><label>Starting Quantity</label><input class="fc" id="part-qty" type="number" min="0" step="1" value="0"></div>
+        <div class="fg"><label>Reorder At</label><input class="fc" id="part-reorder" type="number" min="0" step="1" value="0"></div>
+      </div>
+      <div style="font-size:11px;color:var(--text3)" id="partQtyHint">Reorder At: you'll be flagged as Low Stock once quantity drops to this number or below. Once created, adjust stock using the +/- buttons on the part row (keeps a history of what was used).</div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-ghost" onclick="closePartModal()">Cancel</button><button class="btn btn-primary" onclick="savePart()">Save</button></div>
+  </div>
+</div>
+
+<!-- PARTS INVENTORY: RESTOCK/USE MODAL -->
+<div class="overlay hidden" id="partQtyModal" onclick="if(event.target===this)closePartQtyModal()">
+  <div class="modal modal-sm">
+    <div class="modal-hdr"><h2 id="partQtyModalTitle">Restock Part</h2><button class="mc" onclick="closePartQtyModal()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button></div>
+    <div class="modal-body">
+      <div style="font-size:13px;color:var(--text2);margin-bottom:10px" id="partQtyModalDesc"></div>
+      <div class="fg"><label>Quantity <span style="color:var(--red)">*</span></label><input class="fc" id="partqty-amount" type="number" min="1" step="1" value="1"></div>
+      <div class="fg"><label>Note</label><input class="fc" id="partqty-note" placeholder="optional - e.g. ZD 13082, PO #4521"></div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-ghost" onclick="closePartQtyModal()">Cancel</button><button class="btn btn-primary" onclick="savePartQtyChange()">Confirm</button></div>
+  </div>
+</div>
+
 <!-- DAILY UPDATE MODAL -->
 <div class="overlay hidden" id="digestModal" onclick="if(event.target===this)closeDigestModal()">
   <div class="modal modal-wide">
@@ -1072,11 +1144,18 @@ async function loadActivity(){
   try{_activity=await sbGet('activity','order=at.desc&limit=200');renderActivity();}
   catch(e){console.error('loadActivity',e);}
 }
+async function loadParts(){
+  try{
+    _parts=await sbGet('parts');
+    _partsLog=await sbGet('parts_log','order=at.desc&limit=1000');
+    renderParts();
+  }catch(e){console.error('loadParts',e);toast('Could not load Parts Inventory - see SETUP.md.');}
+}
 
 var _detailId=null;
 var currentUser=null,selectedEmpId=null,warrantyVal=null,repairType='customer';
 var outcomeVal='',editingId=null,trackRepairId=null,closeRepairId=null,editEmpId=null,pendingRelatedTo=null,_relCheckTimer=null;
-var currentPage='dashboard',_repairs=[],_employees=[],_activity=[];
+var currentPage='dashboard',_repairs=[],_employees=[],_activity=[],_parts=[],_partsLog=[];
 var isSupportMode=false;
 
 // local-only storage for tech view-only customer permission
@@ -1331,6 +1410,11 @@ function setupApp(){
   var roleLabel={admin:'Administrator',tech:'Technician',general:'Tester'};
   document.getElementById('sbRole').textContent=roleLabel[emp.role]||emp.role;
   renderSidebar();populateTechFilter();
+  // Parts Inventory: admin + general only (not tech, not support) - a
+  // narrower rule than the .admin-only class, which is strictly admin, so
+  // this is handled directly here rather than folded into that class.
+  var partsNav=document.getElementById('nav-parts');
+  if(partsNav)partsNav.classList.toggle('hidden',!(isAdmin()||isGeneral()));
 }
 function renderSidebar(){
   var admin=isAdmin(), canViewCust=canSeeCustomer(), canManageCust=canManageCustomer();
@@ -1434,12 +1518,13 @@ function showPage(p){
   // Access control
   if(isSupportMode&&p!=='supportview'&&p!=='dashboard'&&p!=='intransit'){return;}
   if(!isAdmin()&&(p==='stats'||p==='employees'||p==='activity'||p==='settings'||p==='askai')){return;}
+  if(!isAdmin()&&!isGeneral()&&p==='parts'){return;}
   currentPage=p;
   document.querySelectorAll('[id^="page-"]').forEach(function(el){el.classList.add('hidden');});
   document.querySelectorAll('.nav-item').forEach(function(el){el.classList.remove('active');});
   var pg=document.getElementById('page-'+p);if(pg)pg.classList.remove('hidden');
   var nv=document.getElementById('nav-'+p);if(nv)nv.classList.add('active');
-  var titles={dashboard:'Dashboard',allrepairs:'All Repairs',myrepairs:'Customer Repairs',myrepairs2:'My Repairs',completed:'Completed Repairs',intransit:'In Transit',support:'Contact Support',supportview:'Customer Repairs',stats:'Staff Stats',askai:'Masjidal AI',employees:'Employees',activity:'Activity Log',settings:'Settings'};
+  var titles={dashboard:'Dashboard',allrepairs:'All Repairs',myrepairs:'Customer Repairs',myrepairs2:'My Repairs',completed:'Completed Repairs',intransit:'In Transit',support:'Contact Support',supportview:'Customer Repairs',stats:'Staff Stats',askai:'Masjidal AI',employees:'Employees',activity:'Activity Log',settings:'Settings',parts:'Parts Inventory'};
   document.getElementById('topbarTitle').textContent=titles[p]||p;
   closeSidebar();
   if(p==='dashboard')renderDashboard();
@@ -1454,6 +1539,7 @@ function showPage(p){
   else if(p==='employees')renderEmployees();
   else if(p==='activity'){loadActivity();}
   else if(p==='settings')renderSettings();
+  else if(p==='parts'){loadParts();}
 }
 function refreshPage(){
   if(!currentUser&&!isSupportMode)return;
@@ -3189,6 +3275,207 @@ function syncCustPermChecks(mode){
   if(mode==='full'&&full.checked)view.checked=false;
   if(mode==='view'&&view.checked)full.checked=false;
 }
+
+// ===== PARTS INVENTORY =====
+var PART_SIZE_ORDER=['8"','10"','10" L (White)','14"','14" L (White)'];
+var PART_TYPE_DEFAULTS=['Screen','Motherboard','WiFi Antenna','Speaker','Power Board','Cable'];
+var editingPartId=null,partQtyMode=null,partQtyTargetId=null;
+
+function _pe(s){return String(s==null?'':s).replace(/</g,'&lt;');}
+function _ppid(el){var p=el;while(p&&!p.dataset.pid)p=p.parentElement;return p?p.dataset.pid:null;}
+
+function populatePartYearDropdown(){
+  var sel=document.getElementById('part-year');if(!sel)return;
+  var currentYear=new Date().getFullYear();
+  var opts=['<option value="">Select year</option>'];
+  for(var y=currentYear;y>=2019;y--)opts.push('<option value="'+y+'">'+y+'</option>');
+  sel.innerHTML=opts.join('');
+}
+function populatePartTypeList(){
+  var dl=document.getElementById('partTypeList');if(!dl)return;
+  var existing=_parts.map(function(p){return p.partType;}).filter(Boolean);
+  var all=PART_TYPE_DEFAULTS.concat(existing).filter(function(v,i,arr){return arr.indexOf(v)===i;});
+  dl.innerHTML=all.map(function(t){return'<option value="'+_pe(t)+'">';}).join('');
+}
+
+function partUsedTotal(partId){
+  return _partsLog.filter(function(l){return l.partId===partId&&l.type==='use';}).reduce(function(s,l){return s+(l.qty||0);},0);
+}
+function partStatusBadge(p){
+  if(p.quantity<=0)return'<span class="badge b-red">Out of Stock</span>';
+  if(p.quantity<=(p.reorderThreshold||0))return'<span class="badge b-yellow">Low Stock</span>';
+  return'<span class="badge b-green">In Stock</span>';
+}
+function partLabel(p){
+  return p.size+' - '+p.year+' - '+p.firmware+' - '+p.partType+(p.partName?' ('+p.partName+')':'');
+}
+
+function renderPartsStats(){
+  var totalUnits=_parts.reduce(function(s,p){return s+(p.quantity||0);},0);
+  var lowStock=_parts.filter(function(p){return p.quantity<=(p.reorderThreshold||0);});
+  document.getElementById('partsStats').innerHTML=
+    sc('Part Types (SKUs)',_parts.length,'','Distinct parts tracked')+
+    sc('Total Units In Stock',totalUnits,'var(--blue)','Across all parts')+
+    sc('Low Stock',lowStock.length,lowStock.length?'var(--red)':'var(--green)','At or below reorder point');
+
+  var lowHtml='';
+  if(lowStock.length){
+    lowHtml='<div class="parts-callout low"><h4>Needs Reordering</h4>'+
+      lowStock.map(function(p){return'<div class="parts-callout-row"><span>'+_pe(partLabel(p))+'</span><strong style="color:var(--red)">'+p.quantity+' left</strong></div>';}).join('')+
+    '</div>';
+  }
+  document.getElementById('partsLowStock').innerHTML=lowHtml;
+
+  var usage={};
+  _partsLog.forEach(function(l){if(l.type==='use')usage[l.partId]=(usage[l.partId]||0)+(l.qty||0);});
+  var topUsed=Object.keys(usage).map(function(id){return{id:id,used:usage[id],part:_parts.find(function(p){return p.id===id;})};})
+    .filter(function(x){return x.part;}).sort(function(a,b){return b.used-a.used;}).slice(0,5);
+  var usedHtml='';
+  if(topUsed.length){
+    usedHtml='<div class="parts-callout used"><h4>Most Used (All-Time)</h4>'+
+      topUsed.map(function(x){return'<div class="parts-callout-row"><span>'+_pe(partLabel(x.part))+'</span><strong>'+x.used+' used</strong></div>';}).join('')+
+    '</div>';
+  }
+  document.getElementById('partsMostUsed').innerHTML=usedHtml;
+}
+
+function renderParts(){
+  var wrap=document.getElementById('partsTree');
+  if(!wrap)return;
+  if(!_parts.length){
+    wrap.innerHTML='<div class="empty"><p>No parts yet</p><span>Click "Add Part" to start tracking inventory.</span></div>';
+    renderPartsStats();
+    return;
+  }
+  var bySize={};
+  _parts.forEach(function(p){
+    bySize[p.size]=bySize[p.size]||{};
+    bySize[p.size][p.year]=bySize[p.size][p.year]||{};
+    bySize[p.size][p.year][p.firmware]=bySize[p.size][p.year][p.firmware]||[];
+    bySize[p.size][p.year][p.firmware].push(p);
+  });
+  var sizes=Object.keys(bySize).sort(function(a,b){
+    var ai=PART_SIZE_ORDER.indexOf(a);if(ai===-1)ai=99;
+    var bi=PART_SIZE_ORDER.indexOf(b);if(bi===-1)bi=99;
+    return ai-bi;
+  });
+  wrap.innerHTML=sizes.map(function(size){
+    var years=Object.keys(bySize[size]).sort(function(a,b){return b.localeCompare(a);});
+    var yearsHtml=years.map(function(year){
+      var fws=Object.keys(bySize[size][year]).sort();
+      var fwHtml=fws.map(function(fw){
+        var parts=bySize[size][year][fw];
+        var rows=parts.map(function(p){
+          return'<tr data-pid="'+p.id+'"><td>'+_pe(p.partType)+'</td><td>'+(p.partName?_pe(p.partName):'--')+'</td>'+
+            '<td>'+p.quantity+'</td><td>'+(p.reorderThreshold||0)+'</td><td>'+partStatusBadge(p)+'</td><td>'+partUsedTotal(p.id)+'</td>'+
+            '<td class="row-acts">'+
+              '<button class="icon-btn" onclick="openPartQty(_ppid(this),\'restock\')" title="Restock"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg></button>'+
+              '<button class="icon-btn" onclick="openPartQty(_ppid(this),\'use\')" title="Use"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13H5v-2h14v2z"/></svg></button>'+
+              '<button class="icon-btn" onclick="openEditPart(_ppid(this))" title="Edit"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.9959.9959 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></button>'+
+              '<button class="icon-btn del" onclick="deletePart(_ppid(this))" title="Delete"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button>'+
+            '</td></tr>';
+        }).join('');
+        return'<details class="parts-fw"><summary>Firmware: '+_pe(fw)+'<span class="parts-count">'+parts.length+' part'+(parts.length===1?'':'s')+'</span></summary>'+
+          '<table class="parts-table"><thead><tr><th>Type</th><th>Name</th><th>Qty</th><th>Reorder At</th><th>Status</th><th>Used (All-Time)</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>'+
+        '</details>';
+      }).join('');
+      return'<details class="parts-year" open><summary>'+_pe(year)+'</summary>'+fwHtml+'</details>';
+    }).join('');
+    return'<details class="parts-size" open><summary>'+_pe(size)+'</summary>'+yearsHtml+'</details>';
+  }).join('');
+  renderPartsStats();
+}
+
+function openAddPart(){
+  editingPartId=null;
+  document.getElementById('partModalTitle').textContent='Add Part';
+  ['part-size','part-firmware','part-type','part-name'].forEach(function(id){document.getElementById(id).value='';});
+  document.getElementById('part-qty').value=0;
+  document.getElementById('part-reorder').value=0;
+  document.getElementById('partQtyGroup').classList.remove('hidden');
+  populatePartYearDropdown();
+  document.getElementById('part-year').value='';
+  populatePartTypeList();
+  document.getElementById('partModal').classList.remove('hidden');
+}
+function openEditPart(id){
+  var p=_parts.find(function(x){return x.id===id;});if(!p)return;
+  editingPartId=id;
+  document.getElementById('partModalTitle').textContent='Edit Part';
+  populatePartYearDropdown();
+  document.getElementById('part-size').value=p.size||'';
+  document.getElementById('part-year').value=p.year||'';
+  document.getElementById('part-firmware').value=p.firmware||'';
+  document.getElementById('part-type').value=p.partType||'';
+  document.getElementById('part-name').value=p.partName||'';
+  document.getElementById('part-reorder').value=p.reorderThreshold||0;
+  // Quantity is changed via the Restock/Use buttons only, so the stock
+  // count always has a matching parts_log entry to explain it - not
+  // editable here.
+  document.getElementById('partQtyGroup').classList.add('hidden');
+  populatePartTypeList();
+  document.getElementById('partModal').classList.remove('hidden');
+}
+function closePartModal(){document.getElementById('partModal').classList.add('hidden');}
+async function savePart(){
+  var size=document.getElementById('part-size').value;
+  var year=document.getElementById('part-year').value;
+  var firmware=document.getElementById('part-firmware').value.trim();
+  var partType=document.getElementById('part-type').value.trim();
+  var partName=document.getElementById('part-name').value.trim();
+  var reorderThreshold=parseInt(document.getElementById('part-reorder').value,10)||0;
+  if(!size||!year||!firmware||!partType){alert('Size, Year, Firmware, and Part Type are required.');return;}
+  var now=new Date().toISOString();
+  try{
+    if(editingPartId){
+      await sbPatch('parts',editingPartId,{size:size,year:year,firmware:firmware,partType:partType,partName:partName,reorderThreshold:reorderThreshold,updatedAt:now});
+      toast('Part updated');
+    }else{
+      var qty=parseInt(document.getElementById('part-qty').value,10)||0;
+      var id=(typeof crypto!=='undefined'&&crypto.randomUUID?crypto.randomUUID():'p'+Date.now());
+      await sbPost('parts',{id:id,size:size,year:year,firmware:firmware,partType:partType,partName:partName,quantity:qty,reorderThreshold:reorderThreshold,createdAt:now,updatedAt:now,createdBy:currentUser});
+      if(qty>0){
+        await sbPost('parts_log',{id:(typeof crypto!=='undefined'&&crypto.randomUUID?crypto.randomUUID():'pl'+Date.now()),partId:id,type:'restock',qty:qty,by:currentUser,at:now,note:'Initial stock'});
+      }
+      toast('Part added');
+    }
+    closePartModal();
+    await loadParts();
+  }catch(e){console.error(e);toast('Error saving part - see SETUP.md for the parts table setup.');}
+}
+async function deletePart(id){
+  var p=_parts.find(function(x){return x.id===id;});if(!p)return;
+  if(!confirm('Delete "'+partLabel(p)+'"? This removes its stock history too.'))return;
+  try{await sbDel('parts',id);toast('Part deleted');await loadParts();}
+  catch(e){console.error(e);toast('Error deleting part.');}
+}
+
+function openPartQty(id,mode){
+  var p=_parts.find(function(x){return x.id===id;});if(!p)return;
+  partQtyMode=mode;partQtyTargetId=id;
+  document.getElementById('partQtyModalTitle').textContent=mode==='restock'?'Restock Part':'Use Part';
+  document.getElementById('partQtyModalDesc').textContent=partLabel(p)+' - currently '+p.quantity+' in stock.';
+  document.getElementById('partqty-amount').value=1;
+  document.getElementById('partqty-note').value='';
+  document.getElementById('partQtyModal').classList.remove('hidden');
+}
+function closePartQtyModal(){document.getElementById('partQtyModal').classList.add('hidden');}
+async function savePartQtyChange(){
+  var p=_parts.find(function(x){return x.id===partQtyTargetId;});if(!p)return;
+  var amount=parseInt(document.getElementById('partqty-amount').value,10);
+  if(!amount||amount<1){alert('Enter a quantity of 1 or more.');return;}
+  if(partQtyMode==='use'&&amount>p.quantity){alert('Only '+p.quantity+' in stock - cannot use '+amount+'.');return;}
+  var note=document.getElementById('partqty-note').value.trim();
+  var newQty=partQtyMode==='restock'?p.quantity+amount:p.quantity-amount;
+  var now=new Date().toISOString();
+  try{
+    await sbPatch('parts',p.id,{quantity:newQty,updatedAt:now});
+    await sbPost('parts_log',{id:(typeof crypto!=='undefined'&&crypto.randomUUID?crypto.randomUUID():'pl'+Date.now()),partId:p.id,type:partQtyMode,qty:amount,by:currentUser,at:now,note:note});
+    toast(partQtyMode==='restock'?'Stock added':'Marked as used');
+    closePartQtyModal();
+    await loadParts();
+  }catch(e){console.error(e);toast('Error updating stock.');}
+}
 function openAddEmp(){
   editEmpId=null;document.getElementById('empModalTitle').textContent='Add Employee';
   document.getElementById('emp-name').value='';document.getElementById('emp-pin').value='';
@@ -3282,7 +3569,7 @@ async function confirmReset(){
 
 function toggleSidebar(){var sb=document.getElementById('sidebar');var ov=document.getElementById('sidebarOverlay');var open=sb.classList.toggle('open');ov.style.display=open?'block':'none';}
 function closeSidebar(){if(window.innerWidth<=700){var sb=document.getElementById('sidebar');var ov=document.getElementById('sidebarOverlay');if(sb)sb.classList.remove('open');if(ov)ov.style.display='none';}}
-document.addEventListener('keydown',function(e){if(e.key==='Escape')['repairModal','detailModal','closeModal','trackModal','empModal','digestModal'].forEach(function(id){var el=document.getElementById(id);if(el)el.classList.add('hidden');});});
+document.addEventListener('keydown',function(e){if(e.key==='Escape')['repairModal','detailModal','closeModal','trackModal','empModal','digestModal','partModal','partQtyModal'].forEach(function(id){var el=document.getElementById(id);if(el)el.classList.add('hidden');});});
 
 async function initApp(){
   setLoading('Connecting to cloud...');
