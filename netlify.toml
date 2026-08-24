@@ -9,6 +9,21 @@
   to = "/.netlify/functions/:splat"
   status = 200
 
+# The whole app is one index.html with no build step or content hashing, so
+# a cached copy means employees keep running an old version of the app with
+# no way to tell. Force a revalidation on every load: the browser still gets
+# a fast 304 when nothing changed, but a deploy is picked up immediately
+# instead of after a manual hard-refresh.
+[[headers]]
+  for = "/"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
 # Hourly sweep so shipment status keeps updating on its own until Delivered,
 # with no one needing to click "Refresh" - runs for every in-transit
 # shipment regardless of whether the optional Shippo webhook is set up.

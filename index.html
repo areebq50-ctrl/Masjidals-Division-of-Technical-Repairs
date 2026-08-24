@@ -719,6 +719,10 @@ input:checked+.slider:before{transform:translateX(16px)}
       <div class="set-section">
         <h3><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>System</h3>
         <div class="set-row">
+          <div class="set-info"><strong>App Version</strong><span>Which build of the app this browser is currently running - check here after a deploy to confirm you're on the latest version</span></div>
+          <span class="tid" id="appVersionLabel" style="font-size:12px"></span>
+        </div>
+        <div class="set-row">
           <div class="set-info"><strong>Reset All Data</strong><span>Permanently delete all repairs, activity logs, and employees from the cloud</span></div>
           <button class="btn btn-danger btn-sm" onclick="confirmReset()">Reset</button>
         </div>
@@ -1035,6 +1039,10 @@ input:checked+.slider:before{transform:translateX(16px)}
     </div>
   </div>
 </div><script>
+// Bumped on every deploy. Shown in Settings -> System -> App Version, so
+// "did my change actually go live?" is answerable by looking, instead of
+// guessing whether the browser or CDN served a stale copy of this file.
+var APP_VERSION = 'b15 - 2026-08-24';
 var SB_URL = 'https://aafszbfonkhwgiykwqrz.supabase.co';
 var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFhZnN6YmZvbmtod2dpeWt3cXJ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0NDM3MDAsImV4cCI6MjA5MDAxOTcwMH0.Vrmdjzg0HPNoPqWr9pREsAx5THBk8hkjBERggwidTO8';
 
@@ -3751,6 +3759,9 @@ async function delEmp(id){if(!confirm('Remove this employee?'))return;try{await 
 function renderActivity(){var el=document.getElementById('activityBody');if(!el)return;if(!_activity.length){el.innerHTML='<div class="empty"><p>No activity yet</p></div>';return;}el.innerHTML=_activity.slice(0,200).map(function(a){return'<div class="t-row" style="grid-template-columns:120px 1fr 160px;padding:12px 18px"><div class="tid">'+(a.ticket||'--')+'</div><div style="font-size:13px">'+a.msg+'</div><div class="dcel" style="text-align:right">'+fmt(a.at)+'</div></div>';}).join('');}
 
 function renderSettings(){
+  // Set before the early returns below, so the version always renders even
+  // when there are no technicians to list.
+  var ver=document.getElementById('appVersionLabel');if(ver)ver.textContent=APP_VERSION;
   var techs=_employees.filter(function(e){return e.role!=='admin';});var el=document.getElementById('techAccessList');if(!el)return;
   if(!techs.length){el.innerHTML='<div style="color:var(--text3);font-size:13px">No technicians yet.</div>';return;}
   el.innerHTML=techs.map(function(e){
