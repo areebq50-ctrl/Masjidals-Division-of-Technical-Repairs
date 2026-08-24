@@ -62,6 +62,33 @@ want this to actually be enforced everywhere consistently, it'd need a real
 switched to read/write it there instead of localStorage - a small, safe
 change I can make whenever you want it.
 
+## ⚠️ Action required: run `supabase/fix-security-definer-view.sql`
+
+Run this **after** `security.sql` above (whether you ran it just now or
+a while ago - either way, this applies cleanly on top of it).
+
+Supabase's built-in Security Advisor flags `public.employees_public`
+(the view `security.sql` creates) as a "Security Definer View" - a real
+lint rule worth taking seriously, but its own suggested one-line fix
+(`security_invoker=on`) would actually break the login screen here: that
+view intentionally reads `employees` while bypassing its RLS (which has
+no anon SELECT policy at all, on purpose, so `pin` is never bulk-readable)
+to expose just the safe columns everyone needs to see the login tiles.
+Switching to invoker mode makes it obey that same no-SELECT policy and
+return zero rows to anon - login would show no employee tiles at all.
+
+The real fix: this file replaces the view with a `SECURITY DEFINER`
+*function* instead (`get_employees_public()`) - same intentional
+behavior, but functions aren't what this lint rule checks for, and it's
+the same pattern `security.sql` already uses for `verify_employee_pin`.
+It also drops the old view, since the view existing at all is what the
+Advisor flags. The app now calls the function via RPC instead of a plain
+select; the exact same data comes back either way.
+
+1. Open your Supabase project → **SQL Editor** → **New query**.
+2. Paste in the contents of `supabase/fix-security-definer-view.sql` from
+   this repo and run it. Safe to re-run.
+
 ## ⚠️ Action required: run `supabase/create-parts-inventory.sql` (again, if you already ran it)
 
 Parts Inventory needs two tables that don't exist in your database yet -

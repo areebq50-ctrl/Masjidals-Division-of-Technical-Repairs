@@ -1114,7 +1114,7 @@ async function doLoad(){
   try{
     var results=await Promise.all([
       sbGet('repairs','order=createdAt.desc&limit=500'),
-      sbGet('employees_public')
+      sbRpc('get_employees_public',{})
     ]);
     _repairs=results[0];
     _employees=results[1];
@@ -3570,7 +3570,7 @@ async function saveEmp(){
     }
     setViewOnlyTech(targetId, role==='tech'&&viewOnly);
     closeEmpModal();
-    _employees=await sbGet('employees_public');
+    _employees=await sbRpc('get_employees_public',{});
     applyViewOnlyFlags();
     renderEmployees();
     renderUserCards();
@@ -3617,13 +3617,13 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape')['repairModa
 async function initApp(){
   setLoading('Connecting to cloud...');
   try{
-    var emps=await sbGet('employees_public');
+    var emps=await sbRpc('get_employees_public',{});
     if(!emps.length){
       setLoading('First time setup...');
       var seedPin=String(Math.floor(1000+Math.random()*9000));
       await sbPost('employees',{id:'areeb',name:'Areeb Qureshi',pin:seedPin,role:'admin',color:'#fef3c7',textColor:'#92400e',initials:'AQ',seeCustomer:true,createdAt:new Date().toISOString()});
       alert('First-time setup created admin account "Areeb Qureshi" with PIN: '+seedPin+'\n\nSave this now - it will not be shown again.');
-      emps=await sbGet('employees_public');
+      emps=await sbRpc('get_employees_public',{});
     }
     _employees=emps;
     document.getElementById('loadingScreen').style.display='none';
@@ -3807,7 +3807,7 @@ initApp();
       }
       setViewOnly(targetId, role==='tech' && view);
       closeEmpModal();
-      _employees=await sbGet('employees_public');
+      _employees=await sbRpc('get_employees_public',{});
       // Re-apply saved order so login page and employee list stay in the right order
       try{
         var savedOrderIds = JSON.parse(localStorage.getItem('employeeOrder')||'[]');
