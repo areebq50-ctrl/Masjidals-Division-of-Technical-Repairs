@@ -62,32 +62,49 @@ want this to actually be enforced everywhere consistently, it'd need a real
 switched to read/write it there instead of localStorage - a small, safe
 change I can make whenever you want it.
 
-## ⚠️ Action required: run `supabase/create-parts-inventory.sql`
+## ⚠️ Action required: run `supabase/create-parts-inventory.sql` (again, if you already ran it)
 
-New feature (Parts Inventory, below) needs two new tables that don't exist
-in your database yet - the page will show a "Could not load Parts
-Inventory" toast until you run this:
+Parts Inventory needs two tables that don't exist in your database yet -
+saving a part fails with an error until you run this. If you already ran
+an earlier version of this file, run it again - it now also adds the
+Android Type / Production Date columns (see below) and is still safe to
+re-run either way, no existing data is touched:
 
 1. Open your Supabase project → **SQL Editor** → **New query**.
 2. Paste in the contents of `supabase/create-parts-inventory.sql` from this
-   repo and run it. Safe to re-run, doesn't touch any existing data.
+   repo and run it.
+
+## ⚠️ Optional: run `supabase/close-stale-general-repairs.sql`
+
+Closes every General/Amazon-return repair (never customer repairs) that's
+still open - a one-time cleanup for old internal test tickets left open
+indefinitely. Since there's no way to know what actually happened to each
+one, they're closed with Outcome "Other: Bulk-closed - stale internal
+ticket (no outcome recorded)" rather than a guessed-at real outcome; edit
+any individual ticket afterward if it needs a real outcome on record.
+Paste it into the SQL Editor and run it the same way as above - re-running
+is harmless, it only matches tickets still open.
 
 ## What changed (latest batch)
 
 - **Parts Inventory** (new sidebar page, Admin + General employees only -
   not Technicians, not Support) - tracks screens, motherboards, WiFi
   antennas, and any other Athan Frame part, organized as Size → Year →
-  Firmware → parts, since firmware differs by that combination. Each part
-  has a running quantity, a Reorder At threshold (flagged as **Low Stock**
-  once quantity drops to or below it, shown in a callout at the top so
-  reordering is a glance, not a hunt), and every restock/use is logged with
-  who/when/how many/an optional note (e.g. "ZD 13082" or a PO number) - the
-  **Most Used** callout is built from that log, so it reflects real usage,
-  not a guess. Add a part with "Add Part"; adjust stock with the +/- icons
-  on its row (never by editing the number directly, so the usage history
-  stays accurate); Edit changes the size/year/firmware/type/name/reorder
-  point but not the quantity, for the same reason. Needs the
-  `supabase/create-parts-inventory.sql` migration above.
+  identifier → parts. The identifier is **Firmware** for Android 11 parts,
+  or **Production Date** (from the part's sticker) for Android 6 parts,
+  since those don't have a firmware version - pick the Android Type first
+  and the right field shows automatically. Each part has a running
+  quantity, a Reorder At threshold (flagged as **Low Stock** once quantity
+  drops to or below it, shown in a callout at the top so reordering is a
+  glance, not a hunt), and every restock/use is logged with who/when/how
+  many/an optional note (e.g. "ZD 13082" or a PO number) - the **Most
+  Used** callout is built from that log, so it reflects real usage, not a
+  guess. Add a part with "Add Part"; adjust stock with the +/- icons on
+  its row (never by editing the number directly, so the usage history
+  stays accurate); Edit changes the size/year/Android
+  type/firmware-or-date/type/name/reorder point but not the quantity, for
+  the same reason. Needs the `supabase/create-parts-inventory.sql`
+  migration above.
 
 ## What changed (previous batch)
 

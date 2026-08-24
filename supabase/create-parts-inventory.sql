@@ -1,16 +1,21 @@
 -- Parts Inventory: screens, motherboards, WiFi antennas, etc. for Athan
--- Frames, tracked by size -> year -> firmware -> part, with a running
--- quantity and a log of every restock/use so "what gets used most" and
--- "what's low on stock" can be computed from real history.
+-- Frames, tracked by size -> year -> Android type -> identifier (firmware
+-- for Android 11 parts, production date for Android 6 parts, since those
+-- don't have a firmware version) -> part, with a running quantity and a
+-- log of every restock/use so "what gets used most" and "what's low on
+-- stock" can be computed from real history.
 --
 -- Run this once in the Supabase SQL Editor (Project -> SQL Editor -> New
--- query -> paste -> Run). Safe to re-run (IF NOT EXISTS everywhere).
+-- query -> paste -> Run). Safe to re-run - IF NOT EXISTS/ADD COLUMN IF NOT
+-- EXISTS everywhere, so re-running after already running an older version
+-- of this file (before the androidType/productionDate columns existed)
+-- just adds what's missing without touching existing rows.
 
 create table if not exists public.parts (
   id text primary key,
   size text not null,
   year text not null,
-  firmware text not null,
+  firmware text,
   "partType" text not null,
   "partName" text,
   quantity integer not null default 0,
@@ -19,6 +24,13 @@ create table if not exists public.parts (
   "updatedAt" timestamptz not null default now(),
   "createdBy" text
 );
+
+-- androidType/productionDate added after the table's first release - a
+-- part's identifier is its firmware (Android 11) or its production date
+-- (Android 6, no firmware version), never both.
+alter table public.parts add column if not exists "androidType" text;
+alter table public.parts add column if not exists "productionDate" date;
+alter table public.parts alter column firmware drop not null;
 
 -- One row per restock or use, so "most used" and "who used what when" can
 -- be reconstructed later - the running quantity on `parts` is a

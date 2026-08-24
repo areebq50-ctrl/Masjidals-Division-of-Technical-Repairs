@@ -979,7 +979,15 @@ input:checked+.slider:before{transform:translateX(16px)}
         </div>
         <div class="fg"><label>Device Year <span style="color:var(--red)">*</span></label><select class="fc" id="part-year"><option value="">Select year</option></select></div>
       </div>
-      <div class="fg"><label>Firmware <span style="color:var(--red)">*</span></label><input class="fc" id="part-firmware" placeholder="e.g. v2.3.1"></div>
+      <div class="fg"><label>Android Type <span style="color:var(--red)">*</span></label>
+        <select class="fc" id="part-androidtype" onchange="togglePartIdentifierField()">
+          <option value="">Select Android type</option>
+          <option value="Android 11">Android 11</option>
+          <option value="Android 6">Android 6</option>
+        </select>
+      </div>
+      <div class="fg" id="partFirmwareGroup"><label>Firmware <span style="color:var(--red)">*</span></label><input class="fc" id="part-firmware" placeholder="e.g. v2.3.1"></div>
+      <div class="fg hidden" id="partProdDateGroup"><label>Production Date <span style="color:var(--red)">*</span></label><input class="fc" id="part-proddate" type="date"><div style="font-size:11px;color:var(--text3);margin-top:4px">Android 6 parts don't have a firmware version - the production date (from the part's sticker) is the identifier instead.</div></div>
       <div class="form-row">
         <div class="fg"><label>Part Type <span style="color:var(--red)">*</span></label><input class="fc" id="part-type" list="partTypeList" placeholder="e.g. Screen, Motherboard, WiFi Antenna"><datalist id="partTypeList"></datalist></div>
         <div class="fg"><label>Part Name / Model</label><input class="fc" id="part-name" placeholder="optional"></div>
@@ -3306,8 +3314,21 @@ function partStatusBadge(p){
   if(p.quantity<=(p.reorderThreshold||0))return'<span class="badge b-yellow">Low Stock</span>';
   return'<span class="badge b-green">In Stock</span>';
 }
+// Android 11 parts are identified by firmware version; Android 6 parts
+// don't have a firmware version at all - the production date printed on
+// the part's sticker is what identifies it instead.
+function partIdentifierText(p){
+  // productionDate is a plain YYYY-MM-DD from a date input - shown as-is
+  // rather than run through Date parsing, which can shift it a day in
+  // negative UTC-offset timezones.
+  if(p.androidType==='Android 6')return'Production Date: '+(p.productionDate||'--');
+  return'Firmware: '+(p.firmware||'--');
+}
+function partIdentifierValue(p){
+  return p.androidType==='Android 6'?(p.productionDate||''):(p.firmware||'');
+}
 function partLabel(p){
-  return p.size+' - '+p.year+' - '+p.firmware+' - '+p.partType+(p.partName?' ('+p.partName+')':'');
+  return p.size+' - '+p.year+' - '+p.androidType+' - '+partIdentifierText(p)+' - '+p.partType+(p.partName?' ('+p.partName+')':'');
 }
 
 function renderPartsStats(){
@@ -3349,10 +3370,14 @@ function renderParts(){
   }
   var bySize={};
   _parts.forEach(function(p){
+    // Third tier is the identifier: firmware for Android 11 parts,
+    // production date for Android 6 parts (they don't have firmware) -
+    // keyed by androidType+value so the two kinds never collide.
+    var idKey=(p.androidType||'?')+'|'+partIdentifierValue(p);
     bySize[p.size]=bySize[p.size]||{};
     bySize[p.size][p.year]=bySize[p.size][p.year]||{};
-    bySize[p.size][p.year][p.firmware]=bySize[p.size][p.year][p.firmware]||[];
-    bySize[p.size][p.year][p.firmware].push(p);
+    bySize[p.size][p.year][idKey]=bySize[p.size][p.year][idKey]||[];
+    bySize[p.size][p.year][idKey].push(p);
   });
   var sizes=Object.keys(bySize).sort(function(a,b){
     var ai=PART_SIZE_ORDER.indexOf(a);if(ai===-1)ai=99;
@@ -3362,11 +3387,12 @@ function renderParts(){
   wrap.innerHTML=sizes.map(function(size){
     var years=Object.keys(bySize[size]).sort(function(a,b){return b.localeCompare(a);});
     var yearsHtml=years.map(function(year){
-      var fws=Object.keys(bySize[size][year]).sort();
-      var fwHtml=fws.map(function(fw){
-        var parts=bySize[size][year][fw];
+      var idKeys=Object.keys(bySize[size][year]).sort();
+      var fwHtml=idKeys.map(function(idKey){
+        var parts=bySize[size][year][idKey];
+        var summaryLabel=partIdentifierText(parts[0]);
         var rows=parts.map(function(p){
-          return'<tr data-pid="'+p.id+'"><td>'+_pe(p.partType)+'</td><td>'+(p.partName?_pe(p.partName):'--')+'</td>'+
+          return'<tr data-pid="'+p.id+'"><td>'+_pe(p.androidType||'--')+'</td><td>'+_pe(p.partType)+'</td><td>'+(p.partName?_pe(p.partName):'--')+'</td>'+
             '<td>'+p.quantity+'</td><td>'+(p.reorderThreshold||0)+'</td><td>'+partStatusBadge(p)+'</td><td>'+partUsedTotal(p.id)+'</td>'+
             '<td class="row-acts">'+
               '<button class="icon-btn" onclick="openPartQty(_ppid(this),\'restock\')" title="Restock"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg></button>'+
@@ -3375,8 +3401,8 @@ function renderParts(){
               '<button class="icon-btn del" onclick="deletePart(_ppid(this))" title="Delete"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button>'+
             '</td></tr>';
         }).join('');
-        return'<details class="parts-fw"><summary>Firmware: '+_pe(fw)+'<span class="parts-count">'+parts.length+' part'+(parts.length===1?'':'s')+'</span></summary>'+
-          '<table class="parts-table"><thead><tr><th>Type</th><th>Name</th><th>Qty</th><th>Reorder At</th><th>Status</th><th>Used (All-Time)</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>'+
+        return'<details class="parts-fw"><summary>'+_pe(summaryLabel)+'<span class="parts-count">'+parts.length+' part'+(parts.length===1?'':'s')+'</span></summary>'+
+          '<table class="parts-table"><thead><tr><th>Android</th><th>Type</th><th>Name</th><th>Qty</th><th>Reorder At</th><th>Status</th><th>Used (All-Time)</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>'+
         '</details>';
       }).join('');
       return'<details class="parts-year" open><summary>'+_pe(year)+'</summary>'+fwHtml+'</details>';
@@ -3386,16 +3412,23 @@ function renderParts(){
   renderPartsStats();
 }
 
+function togglePartIdentifierField(){
+  var at=document.getElementById('part-androidtype').value;
+  var fwGroup=document.getElementById('partFirmwareGroup'), pdGroup=document.getElementById('partProdDateGroup');
+  if(at==='Android 6'){fwGroup.classList.add('hidden');pdGroup.classList.remove('hidden');}
+  else{fwGroup.classList.remove('hidden');pdGroup.classList.add('hidden');}
+}
 function openAddPart(){
   editingPartId=null;
   document.getElementById('partModalTitle').textContent='Add Part';
-  ['part-size','part-firmware','part-type','part-name'].forEach(function(id){document.getElementById(id).value='';});
+  ['part-size','part-androidtype','part-firmware','part-proddate','part-type','part-name'].forEach(function(id){document.getElementById(id).value='';});
   document.getElementById('part-qty').value=0;
   document.getElementById('part-reorder').value=0;
   document.getElementById('partQtyGroup').classList.remove('hidden');
   populatePartYearDropdown();
   document.getElementById('part-year').value='';
   populatePartTypeList();
+  togglePartIdentifierField();
   document.getElementById('partModal').classList.remove('hidden');
 }
 function openEditPart(id){
@@ -3405,7 +3438,9 @@ function openEditPart(id){
   populatePartYearDropdown();
   document.getElementById('part-size').value=p.size||'';
   document.getElementById('part-year').value=p.year||'';
+  document.getElementById('part-androidtype').value=p.androidType||'';
   document.getElementById('part-firmware').value=p.firmware||'';
+  document.getElementById('part-proddate').value=p.productionDate||'';
   document.getElementById('part-type').value=p.partType||'';
   document.getElementById('part-name').value=p.partName||'';
   document.getElementById('part-reorder').value=p.reorderThreshold||0;
@@ -3414,26 +3449,34 @@ function openEditPart(id){
   // editable here.
   document.getElementById('partQtyGroup').classList.add('hidden');
   populatePartTypeList();
+  togglePartIdentifierField();
   document.getElementById('partModal').classList.remove('hidden');
 }
 function closePartModal(){document.getElementById('partModal').classList.add('hidden');}
 async function savePart(){
   var size=document.getElementById('part-size').value;
   var year=document.getElementById('part-year').value;
+  var androidType=document.getElementById('part-androidtype').value;
   var firmware=document.getElementById('part-firmware').value.trim();
+  var productionDate=document.getElementById('part-proddate').value;
   var partType=document.getElementById('part-type').value.trim();
   var partName=document.getElementById('part-name').value.trim();
   var reorderThreshold=parseInt(document.getElementById('part-reorder').value,10)||0;
-  if(!size||!year||!firmware||!partType){alert('Size, Year, Firmware, and Part Type are required.');return;}
+  if(!size||!year||!androidType||!partType){alert('Size, Year, Android Type, and Part Type are required.');return;}
+  if(androidType==='Android 6'&&!productionDate){alert('Production Date is required for Android 6 parts.');return;}
+  if(androidType!=='Android 6'&&!firmware){alert('Firmware is required for Android 11 parts.');return;}
+  // Only the field that applies to this Android type is kept - avoids a
+  // stale firmware/production date lingering from before a type switch.
+  if(androidType==='Android 6')firmware='';else productionDate='';
   var now=new Date().toISOString();
   try{
     if(editingPartId){
-      await sbPatch('parts',editingPartId,{size:size,year:year,firmware:firmware,partType:partType,partName:partName,reorderThreshold:reorderThreshold,updatedAt:now});
+      await sbPatch('parts',editingPartId,{size:size,year:year,androidType:androidType,firmware:firmware,productionDate:productionDate||null,partType:partType,partName:partName,reorderThreshold:reorderThreshold,updatedAt:now});
       toast('Part updated');
     }else{
       var qty=parseInt(document.getElementById('part-qty').value,10)||0;
       var id=(typeof crypto!=='undefined'&&crypto.randomUUID?crypto.randomUUID():'p'+Date.now());
-      await sbPost('parts',{id:id,size:size,year:year,firmware:firmware,partType:partType,partName:partName,quantity:qty,reorderThreshold:reorderThreshold,createdAt:now,updatedAt:now,createdBy:currentUser});
+      await sbPost('parts',{id:id,size:size,year:year,androidType:androidType,firmware:firmware,productionDate:productionDate||null,partType:partType,partName:partName,quantity:qty,reorderThreshold:reorderThreshold,createdAt:now,updatedAt:now,createdBy:currentUser});
       if(qty>0){
         await sbPost('parts_log',{id:(typeof crypto!=='undefined'&&crypto.randomUUID?crypto.randomUUID():'pl'+Date.now()),partId:id,type:'restock',qty:qty,by:currentUser,at:now,note:'Initial stock'});
       }
@@ -3441,7 +3484,7 @@ async function savePart(){
     }
     closePartModal();
     await loadParts();
-  }catch(e){console.error(e);toast('Error saving part - see SETUP.md for the parts table setup.');}
+  }catch(e){console.error(e);toast('Error saving part - run/re-run supabase/create-parts-inventory.sql (see SETUP.md).');}
 }
 async function deletePart(id){
   var p=_parts.find(function(x){return x.id===id;});if(!p)return;
