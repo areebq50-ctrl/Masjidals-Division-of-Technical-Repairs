@@ -1082,6 +1082,12 @@ async function sbDel(table, id) {
   var r=await fetch(SB_URL+'/rest/v1/'+table+'?id=eq.'+encodeURIComponent(id),{method:'DELETE',headers:sbH(false)});
   if(!r.ok) throw new Error('DELETE '+table+' '+r.status);
 }
+// Same as sbDel but matches on an arbitrary PostgREST filter instead of the
+// id column (e.g. 'partId=eq.abc'), for child rows keyed by something else.
+async function sbDelWhere(table, filter) {
+  var r=await fetch(SB_URL+'/rest/v1/'+table+'?'+filter,{method:'DELETE',headers:sbH(false)});
+  if(!r.ok){var t=await r.text();throw new Error('DELETE '+table+' '+r.status+': '+t.substring(0,120));}
+}
 // Calls a Postgres RPC (used for PIN verification, so the pin column itself
 // never has to be selected/sent to the browser - see verify_employee_pin in
 // supabase/security.sql).
@@ -3489,7 +3495,14 @@ async function savePart(){
 async function deletePart(id){
   var p=_parts.find(function(x){return x.id===id;});if(!p)return;
   if(!confirm('Delete "'+partLabel(p)+'"? This removes its stock history too.'))return;
-  try{await sbDel('parts',id);toast('Part deleted');await loadParts();}
+  try{
+    // The stock-history rows are removed explicitly rather than relying on
+    // a foreign-key cascade, so this behaves the same no matter which
+    // version of create-parts-inventory.sql built the table.
+    await sbDelWhere('parts_log','partId=eq.'+encodeURIComponent(id));
+    await sbDel('parts',id);
+    toast('Part deleted');await loadParts();
+  }
   catch(e){console.error(e);toast('Error deleting part: '+((e&&e.message)||'unknown error').substring(0,180),8000);}
 }
 
