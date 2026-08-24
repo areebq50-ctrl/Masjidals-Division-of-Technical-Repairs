@@ -1157,7 +1157,7 @@ async function loadParts(){
     _parts=await sbGet('parts');
     _partsLog=await sbGet('parts_log','order=at.desc&limit=1000');
     renderParts();
-  }catch(e){console.error('loadParts',e);toast('Could not load Parts Inventory - see SETUP.md.');}
+  }catch(e){console.error('loadParts',e);toast('Could not load Parts Inventory: '+((e&&e.message)||'unknown error').substring(0,180),8000);}
 }
 
 var _detailId=null;
@@ -1321,7 +1321,7 @@ function outcomeBadge(o){
   return'<span class="badge '+(m[base]||'b-gray')+'">'+(l[base]||base)+'</span>';
 }
 function empChip(id){if(!id)return'<span style="color:var(--text3)">--</span>';var e=getEmp(id);if(!e)return'<span style="color:var(--text3)">--</span>';return'<div class="tc"><div class="tav" style="background:'+e.color+';color:'+e.textColor+'">'+e.initials+'</div>'+e.name+'</div>';}
-function toast(msg){var t=document.createElement('div');t.className='toast';t.textContent=msg;document.body.appendChild(t);setTimeout(function(){t.remove();},3200);}
+function toast(msg,duration){var t=document.createElement('div');t.className='toast';t.textContent=msg;document.body.appendChild(t);setTimeout(function(){t.remove();},duration||3200);}
 
 function renderUserCards(){
   document.getElementById('userCards').innerHTML=_employees.map(function(e){
@@ -3484,13 +3484,13 @@ async function savePart(){
     }
     closePartModal();
     await loadParts();
-  }catch(e){console.error(e);toast('Error saving part - run/re-run supabase/create-parts-inventory.sql (see SETUP.md).');}
+  }catch(e){console.error(e);toast('Error saving part: '+((e&&e.message)||'unknown error').substring(0,180),8000);}
 }
 async function deletePart(id){
   var p=_parts.find(function(x){return x.id===id;});if(!p)return;
   if(!confirm('Delete "'+partLabel(p)+'"? This removes its stock history too.'))return;
   try{await sbDel('parts',id);toast('Part deleted');await loadParts();}
-  catch(e){console.error(e);toast('Error deleting part.');}
+  catch(e){console.error(e);toast('Error deleting part: '+((e&&e.message)||'unknown error').substring(0,180),8000);}
 }
 
 function openPartQty(id,mode){
@@ -3517,7 +3517,7 @@ async function savePartQtyChange(){
     toast(partQtyMode==='restock'?'Stock added':'Marked as used');
     closePartQtyModal();
     await loadParts();
-  }catch(e){console.error(e);toast('Error updating stock.');}
+  }catch(e){console.error(e);toast('Error updating stock: '+((e&&e.message)||'unknown error').substring(0,180),8000);}
 }
 function openAddEmp(){
   editEmpId=null;document.getElementById('empModalTitle').textContent='Add Employee';
