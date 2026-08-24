@@ -117,10 +117,16 @@ is harmless, it only matches tickets still open.
 - **Parts Inventory** (new sidebar page, Admin + General employees only -
   not Technicians, not Support) - tracks screens, motherboards, WiFi
   antennas, and any other Athan Frame part, organized as Size → Year →
-  identifier → parts. The identifier is **Firmware** for Android 11 parts,
-  or **Production Date** (from the part's sticker) for Android 6 parts,
-  since those don't have a firmware version - pick the Android Type first
-  and the right field shows automatically. Each part has a running
+  **Android Type** → identifier → parts, each level collapsible and
+  showing its own in-stock count. The identifier is **Firmware** for
+  Android 11 parts, or **Production Date** (from the part's sticker) for
+  Android 6 parts, since those don't have a firmware version - pick the
+  Android Type first and the right field shows automatically.
+  **Print / PDF** opens a clean printable sheet (use your browser's "Save
+  as PDF" destination to get a PDF) with the summary counts, a Needs
+  Reordering box, and a table per group - nothing collapsed, so the whole
+  inventory is on paper. **Export CSV** downloads the same data, one row
+  per part, for a spreadsheet. Each part has a running
   quantity, a Reorder At threshold (flagged as **Low Stock** once quantity
   drops to or below it, shown in a callout at the top so reordering is a
   glance, not a hunt), and every restock/use is logged with who/when/how

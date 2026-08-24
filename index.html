@@ -196,9 +196,11 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);-we
 .parts-size>summary{padding:13px 16px;cursor:pointer;font-weight:700;font-size:14px;list-style:none;display:flex;align-items:center;justify-content:space-between;background:var(--surface2)}
 .parts-year{margin:10px 14px;border:1px solid var(--border);border-radius:8px;overflow:hidden}
 .parts-year>summary{padding:10px 14px;cursor:pointer;font-weight:600;font-size:13px;list-style:none;display:flex;align-items:center;justify-content:space-between}
-.parts-fw{margin:8px 12px 8px 20px;border:1px solid #eee;border-radius:8px;overflow:hidden}
+.parts-android{margin:8px 12px 8px 16px;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.parts-android>summary{padding:9px 13px;cursor:pointer;font-weight:600;font-size:12.5px;list-style:none;display:flex;align-items:center;justify-content:space-between}
+.parts-fw{margin:8px 12px 8px 24px;border:1px solid #eee;border-radius:8px;overflow:hidden}
 .parts-fw>summary{padding:9px 13px;cursor:pointer;font-weight:600;font-size:12.5px;list-style:none;display:flex;align-items:center;justify-content:space-between;color:var(--text2)}
-.parts-size>summary::-webkit-details-marker,.parts-year>summary::-webkit-details-marker,.parts-fw>summary::-webkit-details-marker{display:none}
+.parts-size>summary::-webkit-details-marker,.parts-year>summary::-webkit-details-marker,.parts-android>summary::-webkit-details-marker,.parts-fw>summary::-webkit-details-marker{display:none}
 .parts-count{font-weight:400;color:var(--text3);font-size:11px}
 .parts-table{width:100%;border-collapse:collapse;font-size:12.5px}
 .parts-table th{text-align:left;padding:8px 13px;background:var(--surface2);font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--text3);white-space:nowrap}
@@ -693,7 +695,11 @@ input:checked+.slider:before{transform:translateX(16px)}
     <div class="content hidden" id="page-parts">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
         <div><div style="font-size:15px;font-weight:700">Parts Inventory</div><div style="font-size:12px;color:var(--text2);margin-top:2px">Screens, motherboards, and other Athan Frame parts - by size, year, and firmware</div></div>
-        <button class="btn btn-primary" onclick="openAddPart()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>Add Part</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-ghost" onclick="printPartsInventory()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z"/></svg>Print / PDF</button>
+          <button class="btn btn-ghost" onclick="exportPartsCSV()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>Export CSV</button>
+          <button class="btn btn-primary" onclick="openAddPart()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>Add Part</button>
+        </div>
       </div>
       <div class="stats-grid" id="partsStats" style="margin-bottom:18px"></div>
       <div id="partsLowStock"></div>
@@ -3293,6 +3299,7 @@ function syncCustPermChecks(mode){
 // ===== PARTS INVENTORY =====
 var PART_SIZE_ORDER=['8"','10"','10" L (White)','14"','14" L (White)'];
 var PART_TYPE_DEFAULTS=['Screen','Motherboard','WiFi Antenna','Speaker','Power Board','Cable'];
+var PART_ANDROID_ORDER=['Android 11','Android 6'];
 var editingPartId=null,partQtyMode=null,partQtyTargetId=null;
 
 function _pe(s){return String(s==null?'':s).replace(/</g,'&lt;');}
@@ -3374,50 +3381,195 @@ function renderParts(){
     renderPartsStats();
     return;
   }
-  var bySize={};
-  _parts.forEach(function(p){
-    // Third tier is the identifier: firmware for Android 11 parts,
-    // production date for Android 6 parts (they don't have firmware) -
-    // keyed by androidType+value so the two kinds never collide.
-    var idKey=(p.androidType||'?')+'|'+partIdentifierValue(p);
-    bySize[p.size]=bySize[p.size]||{};
-    bySize[p.size][p.year]=bySize[p.size][p.year]||{};
-    bySize[p.size][p.year][idKey]=bySize[p.size][p.year][idKey]||[];
-    bySize[p.size][p.year][idKey].push(p);
-  });
-  var sizes=Object.keys(bySize).sort(function(a,b){
-    var ai=PART_SIZE_ORDER.indexOf(a);if(ai===-1)ai=99;
-    var bi=PART_SIZE_ORDER.indexOf(b);if(bi===-1)bi=99;
-    return ai-bi;
-  });
-  wrap.innerHTML=sizes.map(function(size){
-    var years=Object.keys(bySize[size]).sort(function(a,b){return b.localeCompare(a);});
-    var yearsHtml=years.map(function(year){
-      var idKeys=Object.keys(bySize[size][year]).sort();
-      var fwHtml=idKeys.map(function(idKey){
-        var parts=bySize[size][year][idKey];
-        var summaryLabel=partIdentifierText(parts[0]);
-        var rows=parts.map(function(p){
-          return'<tr data-pid="'+p.id+'"><td>'+_pe(p.androidType||'--')+'</td><td>'+_pe(p.partType)+'</td><td>'+(p.partName?_pe(p.partName):'--')+'</td>'+
-            '<td>'+p.quantity+'</td><td>'+(p.reorderThreshold||0)+'</td><td>'+partStatusBadge(p)+'</td><td>'+partUsedTotal(p.id)+'</td>'+
-            '<td class="row-acts">'+
-              '<button class="icon-btn" onclick="openPartQty(_ppid(this),\'restock\')" title="Restock"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg></button>'+
-              '<button class="icon-btn" onclick="openPartQty(_ppid(this),\'use\')" title="Use"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13H5v-2h14v2z"/></svg></button>'+
-              '<button class="icon-btn" onclick="openEditPart(_ppid(this))" title="Edit"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.9959.9959 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></button>'+
-              '<button class="icon-btn del" onclick="deletePart(_ppid(this))" title="Delete"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button>'+
-            '</td></tr>';
+  var tree=buildPartsTree();
+  wrap.innerHTML=tree.map(function(sizeNode){
+    var yearsHtml=sizeNode.years.map(function(yearNode){
+      var androidHtml=yearNode.androids.map(function(androidNode){
+        var fwHtml=androidNode.groups.map(function(group){
+          var rows=group.parts.map(function(p){
+            return'<tr data-pid="'+p.id+'"><td>'+_pe(p.partType)+'</td><td>'+(p.partName?_pe(p.partName):'--')+'</td>'+
+              '<td>'+p.quantity+'</td><td>'+(p.reorderThreshold||0)+'</td><td>'+partStatusBadge(p)+'</td><td>'+partUsedTotal(p.id)+'</td>'+
+              '<td class="row-acts">'+
+                '<button class="icon-btn" onclick="openPartQty(_ppid(this),\'restock\')" title="Restock"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg></button>'+
+                '<button class="icon-btn" onclick="openPartQty(_ppid(this),\'use\')" title="Use"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13H5v-2h14v2z"/></svg></button>'+
+                '<button class="icon-btn" onclick="openEditPart(_ppid(this))" title="Edit"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.9959.9959 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></button>'+
+                '<button class="icon-btn del" onclick="deletePart(_ppid(this))" title="Delete"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button>'+
+              '</td></tr>';
+          }).join('');
+          return'<details class="parts-fw"><summary>'+_pe(group.label)+'<span class="parts-count">'+group.parts.length+' part'+(group.parts.length===1?'':'s')+' &middot; '+group.units+' in stock</span></summary>'+
+            '<table class="parts-table"><thead><tr><th>Type</th><th>Name</th><th>Qty</th><th>Reorder At</th><th>Status</th><th>Used (All-Time)</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>'+
+          '</details>';
         }).join('');
-        return'<details class="parts-fw"><summary>'+_pe(summaryLabel)+'<span class="parts-count">'+parts.length+' part'+(parts.length===1?'':'s')+'</span></summary>'+
-          '<table class="parts-table"><thead><tr><th>Android</th><th>Type</th><th>Name</th><th>Qty</th><th>Reorder At</th><th>Status</th><th>Used (All-Time)</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>'+
-        '</details>';
+        return'<details class="parts-android" open><summary>'+_pe(androidNode.androidType)+'<span class="parts-count">'+androidNode.units+' in stock</span></summary>'+fwHtml+'</details>';
       }).join('');
-      return'<details class="parts-year" open><summary>'+_pe(year)+'</summary>'+fwHtml+'</details>';
+      return'<details class="parts-year" open><summary>'+_pe(yearNode.year)+'<span class="parts-count">'+yearNode.units+' in stock</span></summary>'+androidHtml+'</details>';
     }).join('');
-    return'<details class="parts-size" open><summary>'+_pe(size)+'</summary>'+yearsHtml+'</details>';
+    return'<details class="parts-size" open><summary>'+_pe(sizeNode.size)+'<span class="parts-count">'+sizeNode.units+' in stock</span></summary>'+yearsHtml+'</details>';
   }).join('');
   renderPartsStats();
 }
 
+// Groups _parts into the page's Size -> Year -> Android Type -> identifier
+// hierarchy. Shared by the on-screen tree, the CSV export, and the printable
+// PDF so all three always show the same structure and the same numbers.
+function buildPartsTree(){
+  var bySize={};
+  _parts.forEach(function(p){
+    var size=p.size||'Unspecified';
+    var year=p.year||'Unspecified';
+    var at=p.androidType||'Unspecified';
+    // Deepest tier is the identifier: firmware for Android 11 parts,
+    // production date for Android 6 parts (they have no firmware).
+    var idKey=partIdentifierValue(p)||'--';
+    bySize[size]=bySize[size]||{};
+    bySize[size][year]=bySize[size][year]||{};
+    bySize[size][year][at]=bySize[size][year][at]||{};
+    bySize[size][year][at][idKey]=bySize[size][year][at][idKey]||[];
+    bySize[size][year][at][idKey].push(p);
+  });
+  function units(list){return list.reduce(function(s,p){return s+(p.quantity||0);},0);}
+  return Object.keys(bySize).sort(function(a,b){
+    var ai=PART_SIZE_ORDER.indexOf(a);if(ai===-1)ai=99;
+    var bi=PART_SIZE_ORDER.indexOf(b);if(bi===-1)bi=99;
+    return ai-bi||a.localeCompare(b);
+  }).map(function(size){
+    var sizeUnits=0;
+    var years=Object.keys(bySize[size]).sort(function(a,b){return b.localeCompare(a);}).map(function(year){
+      var yearUnits=0;
+      var androids=Object.keys(bySize[size][year]).sort(function(a,b){
+        var ai=PART_ANDROID_ORDER.indexOf(a);if(ai===-1)ai=99;
+        var bi=PART_ANDROID_ORDER.indexOf(b);if(bi===-1)bi=99;
+        return ai-bi||a.localeCompare(b);
+      }).map(function(at){
+        var atUnits=0;
+        var groups=Object.keys(bySize[size][year][at]).sort().map(function(idKey){
+          var parts=bySize[size][year][at][idKey].slice().sort(function(a,b){
+            return (a.partType||'').localeCompare(b.partType||'')||(a.partName||'').localeCompare(b.partName||'');
+          });
+          var u=units(parts);atUnits+=u;
+          return {label:partIdentifierText(parts[0]),parts:parts,units:u};
+        });
+        yearUnits+=atUnits;
+        return {androidType:at,groups:groups,units:atUnits};
+      });
+      sizeUnits+=yearUnits;
+      return {year:year,androids:androids,units:yearUnits};
+    });
+    return {size:size,years:years,units:sizeUnits};
+  });
+}
+
+// Flattens the grouped tree into one row per part, in the same order the
+// page displays them - the shared source for both the CSV and the PDF.
+function partsFlatRows(){
+  var out=[];
+  buildPartsTree().forEach(function(s){
+    s.years.forEach(function(y){
+      y.androids.forEach(function(a){
+        a.groups.forEach(function(g){
+          g.parts.forEach(function(p){
+            out.push({
+              size:s.size,year:y.year,androidType:a.androidType,
+              firmware:p.androidType==='Android 6'?'':(p.firmware||''),
+              productionDate:p.androidType==='Android 6'?(p.productionDate||''):'',
+              partType:p.partType||'',partName:p.partName||'',
+              quantity:p.quantity||0,reorderThreshold:p.reorderThreshold||0,
+              status:p.quantity<=0?'Out of Stock':(p.quantity<=(p.reorderThreshold||0)?'Low Stock':'In Stock'),
+              usedAllTime:partUsedTotal(p.id)
+            });
+          });
+        });
+      });
+    });
+  });
+  return out;
+}
+function exportPartsCSV(){
+  var rows=partsFlatRows();
+  if(!rows.length){toast('No parts to export yet.');return;}
+  var cols=['size','year','androidType','firmware','productionDate','partType','partName','quantity','reorderThreshold','status','usedAllTime'];
+  var labels=['Device Size','Year','Android Type','Firmware','Production Date','Part Type','Part Name','Quantity','Reorder At','Status','Used (All-Time)'];
+  var csv=labels.join(',')+'\r\n'+rows.map(function(r){
+    return cols.map(function(c){return csvEscape(r[c]);}).join(',');
+  }).join('\r\n');
+  var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url;a.download='masjidal-parts-inventory-'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('Exported '+rows.length+' parts to CSV');
+}
+// Opens a print-ready view (use the browser's "Save as PDF" destination to
+// get a PDF). Same grouping as the page, laid out as flat printable tables
+// rather than collapsible sections, so nothing is hidden on paper.
+function printPartsInventory(){
+  var tree=buildPartsTree();
+  if(!tree.length){toast('No parts to print yet.');return;}
+  var totalUnits=_parts.reduce(function(s,p){return s+(p.quantity||0);},0);
+  var lowStock=_parts.filter(function(p){return p.quantity<=(p.reorderThreshold||0);});
+  var printed=new Date().toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'});
+
+  var h='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Parts Inventory</title><style>'+getPrintBaseStyles()+
+    '.inv-tbl{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px}'+
+    '.inv-tbl th{text-align:left;background:#F2F4F7 !important;padding:6px 8px;font-size:9px;text-transform:uppercase;letter-spacing:.4px;color:#6B7280;border-bottom:1px solid #E5E7EB}'+
+    '.inv-tbl td{padding:6px 8px;border-bottom:1px solid #F0F1F3;vertical-align:top}'+
+    '.inv-tbl td.num{text-align:right;white-space:nowrap}'+
+    '.grp{font-size:12px;font-weight:700;margin:16px 0 6px 0;padding-bottom:3px;border-bottom:1px solid #E5E7EB;page-break-after:avoid}'+
+    '.grp small{font-weight:400;color:#8A94A6;margin-left:6px}'+
+    '.pill{display:inline-block;padding:1px 7px;border-radius:10px;font-size:9px;font-weight:700}'+
+    '.pill-ok{background:#DCFCE7 !important;color:#166534}'+
+    '.pill-low{background:#FEF9C3 !important;color:#854D0E}'+
+    '.pill-out{background:#FEE2E2 !important;color:#991B1B}'+
+    '.sumbar{display:flex;gap:22px;background:#F2F4F7 !important;border-radius:8px;padding:11px 14px;margin-bottom:6px}'+
+    '.sumbar div{font-size:11px;color:#6B7280}.sumbar strong{display:block;font-size:17px;color:#1A1D23;margin-top:1px}'+
+    '.lowbox{border:1px solid #FCA5A5;background:#FEF2F2 !important;border-radius:8px;padding:10px 13px;margin:12px 0 4px 0}'+
+    '.lowbox h4{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:#991B1B;margin-bottom:5px}'+
+    '.lowbox div{font-size:11px;display:flex;justify-content:space-between;padding:2px 0}'+
+    '@media print{.inv-tbl{page-break-inside:auto}.inv-tbl tr{page-break-inside:avoid}}'+
+    '</style></head><body><div class="page">';
+
+  h+='<div class="hdr"><div class="hdr-left"><img src="data:image/png;base64,'+LOGO_TRANS_B64+'" alt="">'+
+     '<div><div class="hdr-title">Parts Inventory</div><div class="hdr-sub">Masjidal Division of Technical Repairs</div></div></div>'+
+     '<div class="hdr-right"><div class="hdr-printed">Printed '+_pe(printed)+'</div></div></div>';
+  h+='<hr class="accent-line">';
+
+  h+='<div class="sumbar"><div>Part Types (SKUs)<strong>'+_parts.length+'</strong></div>'+
+     '<div>Total Units In Stock<strong>'+totalUnits+'</strong></div>'+
+     '<div>Low Stock<strong>'+lowStock.length+'</strong></div></div>';
+
+  if(lowStock.length){
+    h+='<div class="lowbox"><h4>Needs Reordering</h4>'+lowStock.map(function(p){
+      return'<div><span>'+_pe(partLabel(p))+'</span><strong>'+p.quantity+' left</strong></div>';
+    }).join('')+'</div>';
+  }
+
+  tree.forEach(function(s){
+    s.years.forEach(function(y){
+      y.androids.forEach(function(a){
+        a.groups.forEach(function(g){
+          h+='<div class="grp">'+_pe(s.size+'  |  '+y.year+'  |  '+a.androidType+'  |  '+g.label)+
+             '<small>'+g.units+' in stock</small></div>';
+          h+='<table class="inv-tbl"><thead><tr><th>Part Type</th><th>Name / Model</th>'+
+             '<th style="text-align:right">Qty</th><th style="text-align:right">Reorder At</th>'+
+             '<th>Status</th><th style="text-align:right">Used</th></tr></thead><tbody>';
+          g.parts.forEach(function(p){
+            var cls=p.quantity<=0?'pill-out':(p.quantity<=(p.reorderThreshold||0)?'pill-low':'pill-ok');
+            var txt=p.quantity<=0?'Out of Stock':(p.quantity<=(p.reorderThreshold||0)?'Low Stock':'In Stock');
+            h+='<tr><td>'+_pe(p.partType||'--')+'</td><td>'+_pe(p.partName||'--')+'</td>'+
+               '<td class="num">'+p.quantity+'</td><td class="num">'+(p.reorderThreshold||0)+'</td>'+
+               '<td><span class="pill '+cls+'">'+txt+'</span></td>'+
+               '<td class="num">'+partUsedTotal(p.id)+'</td></tr>';
+          });
+          h+='</tbody></table>';
+        });
+      });
+    });
+  });
+
+  h+='</div></body></html>';
+  openPrintWindow(h);
+}
 function togglePartIdentifierField(){
   var at=document.getElementById('part-androidtype').value;
   var fwGroup=document.getElementById('partFirmwareGroup'), pdGroup=document.getElementById('partProdDateGroup');
