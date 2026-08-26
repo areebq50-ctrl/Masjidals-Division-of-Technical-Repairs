@@ -1,8 +1,14 @@
 // POST /api/ai-ask -> /.netlify/functions/ai-ask
 // Body: { question, data, today } - answers natural-language questions about
 // repair data using Gemini. `data` is a client-trimmed, PII-free snapshot of
-// repair records (no zendesk id/order number/serial/customer contact info -
-// see the askAI() function in index.html for exactly what's sent). `today`
+// repair records (no order number/serial/customer name/email/phone - see the
+// askAI() function in index.html for exactly what's sent). The Zendesk
+// ticket number IS sent: it's an internal ticket reference rather than
+// customer information, and without it the model has no way to name which
+// ticket it's talking about, which made "list the tickets where ..."
+// questions unanswerable. Technician repair notes are sent for the same
+// reason - questions about what was actually done to a device can't be
+// answered from the customer's complaint text alone. `today`
 // is the browser's local date (YYYY-MM-DD) - the model has no other way to
 // know what "today"/"this week" means, so this is required for accurate
 // date-relative answers; falls back to the server's UTC date if omitted.
@@ -30,6 +36,8 @@ var RESPONSE_SCHEMA = {
 var SYSTEM_PROMPT = 'You are a data analyst answering questions about a device repair shop\'s repair-ticket records for Masjidal (an Islamic technology company - the devices are "Athan Frame" smart displays). ' +
   'You will be given today\'s date, a JSON array of repair records, and a question. Each record has: type (customer/general/amazon), ' +
   'size (device size, e.g. 10", 14"), issue (free-text issue description), year (device year), android (Android version string), ' +
+  'zdid (the Zendesk ticket number identifying this ticket - null on internal general/amazon repairs, which have no Zendesk ticket), ' +
+  'repairNotes (the technician\'s own free-text notes on what was actually diagnosed/done to the device - parts replaced, steps tried; may be null if nothing was recorded), ' +
   'status (current ticket status), outcome (how it was resolved), createdAt (when the ticket was opened, ISO timestamp), ' +
   'closedAt (when the ticket was closed and its outcome - e.g. a replacement being sent - took effect, ISO timestamp, null if still open), ' +
   'trackingStatus (shipping status if applicable, may be null). ' +
@@ -38,7 +46,9 @@ var SYSTEM_PROMPT = 'You are a data analyst answering questions about a device r
   'Count carefully and precisely: go through the records methodically rather than estimating, and if you provide a "table" breakdown, the individual values in it must sum to (or otherwise exactly match) any total number stated in the answer text - never let the answer text and the table disagree. ' +
   'Keep the answer concise and conversational (2-4 sentences). ' +
   'Only fill in the "table" field when the question asks for a breakdown/ranking/comparison ACROSS MULTIPLE categories (e.g. "how many by X", "top issues", "android 6 vs 11", "which size has the most issues") - one row per category as {label, value}, sorted most-to-least relevant. ' +
-  'A question asking for a single total (e.g. "how many X were sent today") does NOT need a table - just state the number in the answer text and omit the table field (or leave it empty) to keep the response short.';
+  'A question asking for a single total (e.g. "how many X were sent today") does NOT need a table - just state the number in the answer text and omit the table field (or leave it empty) to keep the response short. ' +
+  'ALSO use the table when the question asks you to LIST specific tickets/devices matching some criteria. In that case put one row PER TICKET: "label" is the ticket\'s Zendesk number formatted as "ZD 13082" (use the zdid field; if zdid is null, use the device size and year instead), and "value" is a short description combining what the issue was and what was done about it, drawn from issue/repairNotes/outcome - e.g. "Turns on and off - motherboard replaced". Include every matching ticket, and state the total count in the answer text. ' +
+  'When the question is about what was DONE to a device (a part replaced, a repair performed, e.g. "which ones had a motherboard replacement"), judge that from repairNotes first and outcome second - do NOT infer it from the issue text, which only describes the customer\'s complaint. If repairNotes is null for a ticket, you cannot tell what was done to it, so do not claim a specific repair was performed on it.';
 
 exports.handler = async function (event) {
   if (event.httpMethod !== 'POST') return json(405, { error: 'Method not allowed' });
@@ -81,7 +91,11 @@ exports.handler = async function (event) {
       // and the raw broken JSON fragment ("{ \"answer\": \"Today...") got
       // shown to the user as if it were the answer. Generous headroom here
       // costs a bit more but a truncated response is unusable either way.
-      var generationConfig = { responseMimeType: 'application/json', responseSchema: RESPONSE_SCHEMA, temperature: 0, maxOutputTokens: 3072 };
+      // 3072 was too tight once "list every matching ticket" answers became
+      // possible - those emit one table row per ticket and can legitimately
+      // run long, and a truncated structured response fails JSON.parse()
+      // entirely rather than degrading gracefully.
+      var generationConfig = { responseMimeType: 'application/json', responseSchema: RESPONSE_SCHEMA, temperature: 0, maxOutputTokens: 8192 };
       // Fully disabling "thinking" (budget 0) was fast but made counting/
       // date-filtering questions unreliable - the model would eyeball the
       // JSON array instead of actually working through it, producing
@@ -91,7 +105,10 @@ exports.handler = async function (event) {
       // retry without it below if that's what caused a request to fail.
       if (!skipThinkingConfig) generationConfig.thinkingConfig = { thinkingBudget: 1024 };
       var controller = new AbortController();
-      var timeout = setTimeout(function () { controller.abort(); }, 20000);
+      // Netlify caps a synchronous function at 26s, so abort just under that
+      // to return a real JSON error instead of being killed mid-flight (which
+      // surfaces to the user as an opaque "request failed").
+      var timeout = setTimeout(function () { controller.abort(); }, 24000);
       return fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + apiKey, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -108,7 +125,7 @@ exports.handler = async function (event) {
     try {
       r = await callGemini(primaryModel, false);
     } catch (e) {
-      if (e.name === 'AbortError') return json(504, { error: 'AI request timed out', detail: 'Gemini did not respond within 20s - try a more specific question.' });
+      if (e.name === 'AbortError') return json(504, { error: 'AI request timed out', detail: 'Gemini did not respond within 24s. Questions that scan every ticket are the slowest - try narrowing it (a single year, a single device size, or open tickets only).' });
       throw e;
     }
 

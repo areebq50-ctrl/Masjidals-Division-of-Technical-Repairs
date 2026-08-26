@@ -1042,7 +1042,7 @@ input:checked+.slider:before{transform:translateX(16px)}
 // Bumped on every deploy. Shown in Settings -> System -> App Version, so
 // "did my change actually go live?" is answerable by looking, instead of
 // guessing whether the browser or CDN served a stale copy of this file.
-var APP_VERSION = 'b15 - 2026-08-24';
+var APP_VERSION = 'b16 - 2026-08-24';
 var SB_URL = 'https://aafszbfonkhwgiykwqrz.supabase.co';
 var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFhZnN6YmZvbmtod2dpeWt3cXJ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0NDM3MDAsImV4cCI6MjA5MDAxOTcwMH0.Vrmdjzg0HPNoPqWr9pREsAx5THBk8hkjBERggwidTO8';
 
@@ -1825,12 +1825,26 @@ async function askAI(){
   qEl.value='';qEl.style.height='auto';
   btn.disabled=true;
   var controller=new AbortController();
-  var timeoutId=setTimeout(function(){controller.abort();},25000);
+  // Must stay above the ai-ask function's own internal abort (24s) so the
+  // server gets a chance to return a real error message instead of the
+  // browser giving up first and reporting a generic failure.
+  var timeoutId=setTimeout(function(){controller.abort();},32000);
   try{
-    // PII-free snapshot: no zdid/ordnum/serial/custName/custEmail/custPhone.
+    // Customer-PII-free snapshot: still no ordnum/serial/custName/custEmail/
+    // custPhone. zdid IS included - it's an internal ticket reference, not
+    // customer information, and without it the AI cannot answer the most
+    // common kind of question asked here ("list the tickets where ..."),
+    // since it has no way to name which ticket it means. repairNotes is
+    // included for the same reason: questions about what was actually done
+    // to a device ("which ones got a motherboard replacement") are
+    // unanswerable without it. Both are trimmed to keep the payload small,
+    // because the whole thing is re-sent on every question.
     var data=_repairs.slice(0,1200).map(function(r){
-      return {type:r.type,size:r.size,issue:r.issue,year:r.year,android:r.android,status:r.status,
-        outcome:r.outcome,createdAt:r.createdAt,closedAt:r.closedAt,
+      var rn=(typeof getRepairNotesText==='function'?getRepairNotesText(r):(r.repairNotes||''));
+      return {type:r.type,zdid:r.zdid||null,size:r.size,issue:(r.issue||'').slice(0,180),
+        year:r.year||partYearFromNotes(r),android:r.android,status:r.status,
+        outcome:r.outcome,repairNotes:rn?rn.slice(0,180):null,
+        createdAt:r.createdAt,closedAt:r.closedAt,
         trackingStatus:(getTracking(r)||{}).statusText||null};
     });
     // The model has no built-in notion of "today" - without this, questions
@@ -1897,6 +1911,14 @@ function getRepairNotesText(r){
     }
   }
   return'';
+}
+// Device year has the same split storage as repair notes: a dedicated
+// column on newer records, YEAR:.... inside the notes metadata bracket on
+// older ones. Reading only r.year silently drops every older record from
+// any year-filtered question.
+function partYearFromNotes(r){
+  var m=(r.notes||'').match(/YEAR:(\d{4})/);
+  return m?m[1]:null;
 }
 function isToday(iso){
   if(!iso)return false;
