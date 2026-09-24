@@ -1070,7 +1070,7 @@ input:checked+.slider:before{transform:translateX(16px)}
 // Bumped on every deploy. Shown in Settings -> System -> App Version, so
 // "did my change actually go live?" is answerable by looking, instead of
 // guessing whether the browser or CDN served a stale copy of this file.
-var APP_VERSION = 'b30 - 2026-09-24';
+var APP_VERSION = 'b31 - 2026-09-24';
 var SB_URL = 'https://aafszbfonkhwgiykwqrz.supabase.co';
 var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFhZnN6YmZvbmtod2dpeWt3cXJ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0NDM3MDAsImV4cCI6MjA5MDAxOTcwMH0.Vrmdjzg0HPNoPqWr9pREsAx5THBk8hkjBERggwidTO8';
 
@@ -4126,11 +4126,15 @@ function issueReportDocHTML(opts){
     '.c-zd{width:66px;font-weight:700}'+
     // Serial is an empty write-in box - most customer repairs have no serial
     // on file, so it's filled in by hand on paper.
-    '.c-ser{width:180px;font-size:9.5px;white-space:nowrap}'+
-    // Sized against a full 20-character serial (HPFTADJMA502512041282) with
-    // room to spare, and the rule sits low in the cell so there is space to
-    // write above it rather than on top of the row divider.
-    '.serial-cell{border-bottom:1px solid #8D96A5 !important;height:30px;margin-right:2px}'+
+    // Serial gets its own full-width line UNDER each device instead of a
+    // column. Squeezed into the table it was ~1.7in - too cramped to write a
+    // 20-character serial (HPFTADJMA502512041282) into by hand. On its own
+    // row the rule runs ~4in and sits clearly below the device it belongs to.
+    '.ser-row td{padding:0 8px 11px 8px;border-bottom:1px solid #EDEFF2}'+
+    '.ser-lbl{font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#8A94A6;margin-right:10px;vertical-align:bottom}'+
+    '.ser-line{display:inline-block;min-width:390px;border-bottom:1px solid #8D96A5 !important;height:22px;vertical-align:bottom;font-size:11.5px;color:#1A1D23;letter-spacing:.4px}'+
+    '.dev-row td{border-bottom:none}'+
+    'tbody.dev{page-break-inside:avoid}'+
     '.c-size{width:88px}.c-year{width:38px}.c-out{width:122px}'+
     '.muted{color:#A8B0BD}'+
     // One repair action per line, so a device with several reads cleanly.
@@ -4152,20 +4156,23 @@ function issueReportDocHTML(opts){
      '<div>'+_pe(opts.thirdLabel||'')+'<strong style="font-size:13px">'+_pe(opts.thirdValue||'')+'</strong></div></div>';
 
   h+='<table class="inv-tbl"><thead><tr>'+
-     '<th class="c-zd nw">ZD</th><th class="c-ser nw">Serial #</th><th class="c-size nw">Size</th><th class="c-year nw">Year</th>'+
+     '<th class="c-zd nw">ZD</th><th class="c-size nw">Size</th><th class="c-year nw">Year</th>'+
      '<th>Reported Issue</th><th>Repair Findings</th><th class="c-out">Repair Performed</th>'+
-     '</tr></thead><tbody>';
+     '</tr></thead>';
   rows.forEach(function(r){
-    h+='<tr><td class="c-zd nw">'+_pe(r.zd)+'</td>'+
-       '<td class="c-ser">'+(r.serial?_pe(r.serial):'<div class="serial-cell"></div>')+'</td>'+
+    h+='<tbody class="dev"><tr class="dev-row"><td class="c-zd nw">'+_pe(r.zd)+'</td>'+
        '<td class="c-size">'+_pe(r.size||'--')+'</td><td class="c-year nw">'+_pe(r.year||'--')+'</td>'+
        '<td>'+_pe(r.issue||'--')+'</td>'+
        '<td>'+(r.repairNotes?_pe(r.repairNotes):'<span class="muted">not recorded</span>')+'</td>'+
        '<td class="c-out">'+(r.actions.length
           ? r.actions.map(function(a){return'<span class="act">'+_pe(a)+'</span>';}).join('')
-          : '<span class="muted">no repair recorded</span>')+'</td></tr>';
+          : '<span class="muted">no repair recorded</span>')+'</td></tr>'+
+       '<tr class="ser-row"><td colspan="6">'+
+         '<span class="ser-lbl">Serial #</span>'+
+         '<span class="ser-line">'+(r.serial?'&nbsp;'+_pe(r.serial):'')+'</span>'+
+       '</td></tr></tbody>';
   });
-  h+='</tbody></table>';
+  h+='</table>';
 
   h+='<div class="crit">'+opts.criteriaHTML+' Serial # is left blank where none is on file, to be completed by hand.</div>';
   h+=getPrintSignatureHTML();
