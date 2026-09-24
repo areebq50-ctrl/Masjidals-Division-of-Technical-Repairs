@@ -38,9 +38,10 @@ var SYSTEM_PROMPT = 'You are a data analyst answering questions about a device r
   'size (device size, e.g. 10", 14"), issue (free-text issue description), year (device year), android (Android version string), ' +
   'zdid (the Zendesk ticket number identifying this ticket - null on internal general/amazon repairs, which have no Zendesk ticket), ' +
   'repairNotes (the technician\'s own free-text notes on what was actually diagnosed/done to the device - parts replaced, steps tried; may be null if nothing was recorded), ' +
-  'status (current ticket status), outcome (how it was resolved), createdAt (when the ticket was opened, ISO timestamp), ' +
-  'closedAt (when the ticket was closed and its outcome - e.g. a replacement being sent - took effect, ISO timestamp, null if still open), ' +
-  'trackingStatus (shipping status if applicable, may be null). ' +
+  'status (current ticket status), outcome (how it was resolved), createdAt (the date the ticket was opened, YYYY-MM-DD), ' +
+  'closedAt (the date the ticket was closed and its outcome - e.g. a replacement being sent - took effect, YYYY-MM-DD), ' +
+  'trackingStatus (shipping status if applicable). ' +
+  'IMPORTANT: fields that are empty/unset are OMITTED from a record entirely rather than being present-but-null. So a record with no "closedAt" key is still open, a record with no "repairNotes" key has no recorded repair detail, and a record with no "zdid" key is an internal repair with no Zendesk ticket. Treat an absent key as "not set", never as a reason to skip the record. ' +
   'Answer accurately based ONLY on the data given - never invent numbers, and say so plainly if the data does not contain enough information to answer. ' +
   'For date/time questions ("today", "this week", "past N days/months"), always compare against the "Today\'s date" value given to you, never guess it from the data - and use closedAt for questions about when something was sent/shipped/resolved/replaced, createdAt for questions about when a ticket was opened/created. ' +
   'Count carefully and precisely: go through the records methodically rather than estimating, and if you provide a "table" breakdown, the individual values in it must sum to (or otherwise exactly match) any total number stated in the answer text - never let the answer text and the table disagree. ' +
@@ -150,14 +151,33 @@ exports.handler = async function (event) {
     if (!r.ok) {
       var errText = await r.text();
       console.error('Gemini error', r.status, errText);
-      return json(502, { error: 'AI request failed', detail: errText.substring(0, 300) });
+      // Translate the two failures that are actually about load rather than
+      // a bug, so the page says what to do instead of "AI request failed".
+      if (r.status === 429) {
+        return json(502, { error: 'AI is rate limited right now',
+          detail: 'Gemini rejected the request for exceeding its quota (requests or tokens per minute). Wait a minute and try again, or ask a narrower question so less data is sent. If this keeps happening, the API key is likely on the free tier and needs billing enabled.' });
+      }
+      if (r.status === 503 || r.status === 500) {
+        return json(502, { error: 'Gemini is temporarily unavailable',
+          detail: 'Google returned ' + r.status + ' (model overloaded). This is on their end - try again in a moment.' });
+      }
+      return json(502, { error: 'AI request failed', detail: 'Gemini returned ' + r.status + ': ' + errText.substring(0, 400) });
     }
 
     var respData = await r.json();
     var candidate = respData.candidates && respData.candidates[0];
     var text = candidate && candidate.content && candidate.content.parts && candidate.content.parts[0] && candidate.content.parts[0].text;
     var finishReason = candidate && candidate.finishReason;
-    if (!text) return json(502, { error: 'AI returned no content' });
+    if (!text) {
+      // A candidate with no text is usually MAX_TOKENS (the whole budget went
+      // to internal "thinking" before any answer was emitted) or a safety
+      // block. Say which - previously this was an unexplained dead end.
+      console.error('Gemini returned no content', finishReason, JSON.stringify(respData).substring(0, 400));
+      return json(502, { error: 'AI returned no content',
+        detail: finishReason === 'MAX_TOKENS'
+          ? 'The model used its entire token budget before producing an answer - ask for a narrower list (e.g. one device size, or a shorter date range).'
+          : 'Gemini finished with reason: ' + (finishReason || 'unknown') + '.' });
+    }
 
     var parsed;
     try {

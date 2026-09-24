@@ -1042,7 +1042,7 @@ input:checked+.slider:before{transform:translateX(16px)}
 // Bumped on every deploy. Shown in Settings -> System -> App Version, so
 // "did my change actually go live?" is answerable by looking, instead of
 // guessing whether the browser or CDN served a stale copy of this file.
-var APP_VERSION = 'b16 - 2026-08-24';
+var APP_VERSION = 'b17 - 2026-09-24';
 var SB_URL = 'https://aafszbfonkhwgiykwqrz.supabase.co';
 var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFhZnN6YmZvbmtod2dpeWt3cXJ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0NDM3MDAsImV4cCI6MjA5MDAxOTcwMH0.Vrmdjzg0HPNoPqWr9pREsAx5THBk8hkjBERggwidTO8';
 
@@ -1841,11 +1841,26 @@ async function askAI(){
     // because the whole thing is re-sent on every question.
     var data=_repairs.slice(0,1200).map(function(r){
       var rn=(typeof getRepairNotesText==='function'?getRepairNotesText(r):(r.repairNotes||''));
-      return {type:r.type,zdid:r.zdid||null,size:r.size,issue:(r.issue||'').slice(0,180),
-        year:r.year||partYearFromNotes(r),android:r.android,status:r.status,
-        outcome:r.outcome,repairNotes:rn?rn.slice(0,180):null,
-        createdAt:r.createdAt,closedAt:r.closedAt,
-        trackingStatus:(getTracking(r)||{}).statusText||null};
+      var o={};
+      // Only non-empty fields are included. Emitting "outcome":"" etc. on
+      // every record added up to a large fraction of the request body, and
+      // this snapshot is re-sent in full on every single question - an
+      // oversized request is what pushes Gemini into a token-per-minute
+      // quota error, which surfaces as a bare "AI request failed".
+      function put(k,v){if(v!==null&&v!==undefined&&v!=='')o[k]=v;}
+      put('type',r.type);
+      put('zdid',r.zdid);
+      put('size',r.size);
+      put('issue',(r.issue||'').slice(0,140));
+      put('year',r.year||partYearFromNotes(r));
+      put('android',r.android);
+      put('status',r.status);
+      put('outcome',r.outcome);
+      put('repairNotes',rn?rn.slice(0,140):'');
+      put('createdAt',r.createdAt?String(r.createdAt).slice(0,10):'');
+      put('closedAt',r.closedAt?String(r.closedAt).slice(0,10):'');
+      put('trackingStatus',(getTracking(r)||{}).statusText);
+      return o;
     });
     // The model has no built-in notion of "today" - without this, questions
     // like "how many today/this week" get silently guessed from whatever
@@ -1858,7 +1873,13 @@ async function askAI(){
     var box=document.getElementById(qId);
     if(!resp.ok||!result.answer){
       console.error('Masjidal AI error response:',resp.status,result);
-      box.textContent=result.message||result.error||('Masjidal AI request failed (HTTP '+resp.status+'). Check the ai-ask function logs in Netlify.')+(result.detail?' — '+result.detail:'');
+      // `a || b || (c) + (d)` parsed as `a || b || ((c)+(d))` because + binds
+      // tighter than ||, so whenever the server sent {error, detail} the
+      // detail - the only part saying WHY it failed - was silently dropped
+      // and the user just saw "AI request failed". Build the text explicitly.
+      var errText=result.message||result.error||('Masjidal AI request failed (HTTP '+resp.status+'). Check the ai-ask function logs in Netlify.');
+      if(result.detail)errText+=' — '+result.detail;
+      box.textContent=errText;
     }else{
       box.textContent=result.answer;
       if(result.table&&result.table.length){
@@ -1873,7 +1894,7 @@ async function askAI(){
   }catch(e){
     console.error(e);
     var box2=document.getElementById(qId);
-    if(box2)box2.textContent=(e.name==='AbortError')?'That took too long to answer (25s+). Try a more specific question, or try again.':'Something went wrong asking AI. Try again.';
+    if(box2)box2.textContent=(e.name==='AbortError')?'That took too long to answer (30s+). Try a narrower question - one device size, or a shorter date range.':'Something went wrong asking AI. Try again.';
   }
   clearTimeout(timeoutId);
   convo.scrollTop=convo.scrollHeight;
