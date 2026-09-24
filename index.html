@@ -1068,7 +1068,7 @@ input:checked+.slider:before{transform:translateX(16px)}
 // Bumped on every deploy. Shown in Settings -> System -> App Version, so
 // "did my change actually go live?" is answerable by looking, instead of
 // guessing whether the browser or CDN served a stale copy of this file.
-var APP_VERSION = 'b23 - 2026-09-24';
+var APP_VERSION = 'b24 - 2026-09-24';
 var SB_URL = 'https://aafszbfonkhwgiykwqrz.supabase.co';
 var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFhZnN6YmZvbmtod2dpeWt3cXJ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0NDM3MDAsImV4cCI6MjA5MDAxOTcwMH0.Vrmdjzg0HPNoPqWr9pREsAx5THBk8hkjBERggwidTO8';
 
@@ -1889,6 +1889,48 @@ async function checkAIConnection(){
   }
   convo.scrollTop=convo.scrollHeight;
 }
+// Exports a Masjidal AI answer as the official DTR PDF - the question, the
+// answer, and its breakdown table if it produced one. Same header/footer as
+// every other exported document.
+function printAIAnswer(id){
+  var rec=_aiTableStore[id];
+  if(!rec){toast('That answer is no longer available - ask again.');return;}
+  var printed=new Date().toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'});
+  var h='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Masjidal AI Report</title><style>'+getPrintBaseStyles()+
+    '.q-box{background:#F2F4F7 !important;border-radius:8px;padding:12px 15px;margin-bottom:16px}'+
+    '.q-lbl{font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#8A94A6;margin-bottom:4px}'+
+    '.q-txt{font-size:12px;color:#1A1D23;line-height:1.5}'+
+    '.a-txt{font-size:12.5px;color:#1A1D23;line-height:1.65;margin-bottom:16px;white-space:pre-wrap}'+
+    '.ai-tbl{width:100%;border-collapse:collapse;font-size:11px}'+
+    '.ai-tbl th{text-align:left;padding:0 9px 7px 9px;font-size:8.5px;text-transform:uppercase;letter-spacing:.5px;color:#8A94A6;border-bottom:1.5px solid #184CA1}'+
+    '.ai-tbl td{padding:8px 9px;border-bottom:1px solid #EDEFF2;line-height:1.45}'+
+    '.ai-tbl td:last-child{text-align:right;white-space:nowrap;font-weight:600}'+
+    '.ai-tbl tr:last-child td{border-bottom:none}'+
+    '@media print{.ai-tbl tr{page-break-inside:avoid}thead{display:table-header-group}}'+
+    '</style></head><body><div class="page">';
+  h+='<div class="hdr"><div class="hdr-left"><img src="data:image/png;base64,'+LOGO_TRANS_B64+'" alt="">'+
+     '<div><div class="hdr-title">Masjidal AI Report</div><div class="hdr-sub">Masjidal Division of Technical Repairs</div></div></div>'+
+     '<div class="hdr-right"><div class="hdr-printed">Printed '+_pe(printed)+'</div></div></div>';
+  h+='<hr class="accent-line">';
+  h+='<div class="q-box"><div class="q-lbl">Question asked</div><div class="q-txt">'+_pe(rec.question||'--')+'</div></div>';
+  h+='<div class="a-txt">'+_pe(rec.answer||'')+'</div>';
+  if(rec.table&&rec.table.length){
+    h+='<table class="ai-tbl"><thead><tr><th>Item</th><th style="text-align:right">Value</th></tr></thead><tbody>';
+    rec.table.forEach(function(row){
+      h+='<tr><td>'+_pe(row.label)+'</td><td>'+_pe(row.value)+'</td></tr>';
+    });
+    h+='</tbody></table>';
+  }
+  h+=getPrintSignatureHTML();
+  h+='</div></body></html>';
+  openPrintWindow(h);
+}
+function exportAITableCSV(id){
+  var rec=_aiTableStore[id];
+  if(!rec){toast('That answer is no longer available - ask again.');return;}
+  if(!rec.table||!rec.table.length){toast('That answer has no table to export - use Print / PDF instead.');return;}
+  exportTableCSV(rec.table,'masjidal-ai');
+}
 async function askAI(){
   var qEl=document.getElementById('aiQuestion');
   var question=qEl.value.trim();
@@ -1962,14 +2004,21 @@ async function askAI(){
       box.textContent=errText;
     }else{
       box.textContent=result.answer;
+      // Every answer gets export buttons, with or without a table - a
+      // text-only answer is still worth handing to someone as a PDF.
+      var ansId='t'+Date.now();
+      _aiTableStore[ansId]={question:question,answer:result.answer,table:result.table||[]};
+      var extraHtml='';
       if(result.table&&result.table.length){
-        var tblId='t'+Date.now();
-        _aiTableStore[tblId]=result.table;
-        var tblHtml='<table>'+
+        extraHtml+='<table>'+
           result.table.map(function(row){return'<tr><td>'+String(row.label).replace(/</g,'&lt;')+'</td><td>'+String(row.value).replace(/</g,'&lt;')+'</td></tr>';}).join('')+
-          '</table><button class="btn btn-ghost btn-sm" style="margin-top:10px" onclick=\'exportTableCSV(_aiTableStore["'+tblId+'"],"masjidal-ai")\'>Export CSV</button>';
-        box.insertAdjacentHTML('beforeend',tblHtml);
+          '</table>';
       }
+      extraHtml+='<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">'+
+        '<button class="btn btn-ghost btn-sm" onclick=\'printAIAnswer("'+ansId+'")\'>Print / PDF</button>'+
+        '<button class="btn btn-ghost btn-sm" onclick=\'exportAITableCSV("'+ansId+'")\'>Export CSV</button>'+
+      '</div>';
+      box.insertAdjacentHTML('beforeend',extraHtml);
     }
   }catch(e){
     console.error(e);
