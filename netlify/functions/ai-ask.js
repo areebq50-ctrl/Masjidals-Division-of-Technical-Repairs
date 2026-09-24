@@ -55,7 +55,13 @@ var SYSTEM_PROMPT = 'You are a data analyst answering questions about a device r
 // Google shut it down on 2026-06-01, which broke Ask AI outright. Rather
 // than hardcode a replacement that will eventually die the same way, ask
 // Google which models the key can actually use and pick from that.
-var MODEL_PREFERENCE = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+var MODEL_PREFERENCE = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-flash-lite-latest', 'gemini-2.0-flash'];
+// Statuses that mean "Google is busy", not "your request is wrong" -
+// worth failing over to a different model rather than giving up.
+var TRANSIENT_STATUS = [429, 500, 502, 503, 504];
+// Remembered across warm invocations so a busy model isn't re-tried
+// first on every single request.
+var lastGoodModel = null;
 
 async function listUsableModels(apiKey) {
   var controller = new AbortController();
@@ -104,26 +110,47 @@ async function runDiagnostics(apiKey) {
   var chosen = pickModel(listed.models);
   out.chosenModel = chosen;
   if (!chosen) { out.verdict = 'The key works, but it has no models that support generateContent. Check the key\'s project has the Generative Language API enabled.'; return out; }
-  // Smallest possible real call, to prove generation itself works.
-  try {
-    var r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + chosen + ':generateContent?key=' + apiKey, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'Reply with the word OK.' }] }], generationConfig: { maxOutputTokens: 200 } })
-    });
-    out.testCallStatus = r.status;
-    if (!r.ok) {
+
+  // Walk the same candidate order the real request uses, so the verdict
+  // reflects what would actually happen - a 503 on the first-choice model
+  // is not a failure if the next one answers.
+  var order = [];
+  [chosen].concat(MODEL_PREFERENCE).forEach(function (m) {
+    if (m && order.indexOf(m) === -1 && listed.models.indexOf(m) !== -1) order.push(m);
+  });
+  out.testedModels = [];
+  for (var i = 0; i < order.length && i < 4; i++) {
+    var m = order[i];
+    try {
+      var r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent?key=' + apiKey, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'Reply with the word OK.' }] }], generationConfig: { maxOutputTokens: 200 } })
+      });
+      out.testedModels.push(m + ': HTTP ' + r.status);
+      if (r.ok) {
+        out.workingModel = m;
+        out.verdict = (i === 0)
+          ? 'Working. Model "' + m + '" responded successfully.'
+          : 'Working. First choice was busy, but "' + m + '" responded - the app fails over automatically, so Ask AI will work.';
+        return out;
+      }
       var txt = await r.text();
-      out.testCallError = txt.substring(0, 300);
-      out.verdict = r.status === 429
-        ? 'The key works but is being rate limited (quota exceeded). If it is a free-tier key, enable billing on its Google Cloud project.'
-        : 'Model "' + chosen + '" rejected a test call with HTTP ' + r.status + '. See testCallError.';
-      return out;
+      out.lastTestError = txt.substring(0, 250);
+      if (r.status === 429) {
+        out.verdict = 'The key works but is being rate limited (quota exceeded). If it is a free-tier key, enable billing on its Google Cloud project.';
+        return out;
+      }
+      if (TRANSIENT_STATUS.indexOf(r.status) === -1) {
+        out.verdict = 'Model "' + m + '" rejected a test call with HTTP ' + r.status + '. See lastTestError.';
+        return out;
+      }
+      // transient - try the next model
+    } catch (e) {
+      out.testedModels.push(m + ': ' + String(e && e.message || e));
+      out.lastTestError = String(e && e.message || e);
     }
-    out.verdict = 'Working. Model "' + chosen + '" responded successfully.';
-  } catch (e) {
-    out.testCallError = String(e && e.message || e);
-    out.verdict = 'Test call to "' + chosen + '" failed: ' + out.testCallError;
   }
+  out.verdict = 'Your API key is valid, but every model tried is currently overloaded on Google\'s side (HTTP 503). This is temporary and not a problem with your setup - the app retries across models automatically, so try your question again in a minute.';
   return out;
 }
 
@@ -161,10 +188,9 @@ exports.handler = async function (event) {
     // version does (gemini-2.0-flash, hardcoded here previously, was
     // shut down by Google on 2026-06-01). Pin a specific version via
     // GEMINI_MODEL if you want stability over auto-updates instead.
-    var primaryModel = process.env.GEMINI_MODEL || 'gemini-flash-latest';
     var userPrompt = 'Today\'s date: ' + today + '\n\nRepair records (JSON array, ' + data.length + ' records):\n' + JSON.stringify(data) + '\n\nQuestion: ' + question;
 
-    function callGemini(model, skipThinkingConfig) {
+    function callGemini(model, skipThinkingConfig, timeoutMs) {
       // maxOutputTokens too low was the direct cause of a real bug: the
       // model's structured JSON response was getting cut off mid-string
       // before it could close its quotes/braces, so JSON.parse() failed
@@ -188,7 +214,7 @@ exports.handler = async function (event) {
       // Netlify caps a synchronous function at 26s, so abort just under that
       // to return a real JSON error instead of being killed mid-flight (which
       // surfaces to the user as an opaque "request failed").
-      var timeout = setTimeout(function () { controller.abort(); }, 24000);
+      var timeout = setTimeout(function () { controller.abort(); }, timeoutMs || 20000);
       return fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + apiKey, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -201,44 +227,72 @@ exports.handler = async function (event) {
       }).finally(function () { clearTimeout(timeout); });
     }
 
-    var r;
-    try {
-      r = await callGemini(primaryModel, false);
-    } catch (e) {
-      if (e.name === 'AbortError') return json(504, { error: 'AI request timed out', detail: 'Gemini did not respond within 24s. Questions that scan every ticket are the slowest - try narrowing it (a single year, a single device size, or open tickets only).' });
-      throw e;
+    // Work through candidate models until one actually answers. A 503
+    // ("this model is experiencing high demand") is Google's load, not a
+    // problem with the request or the key - it comes back immediately, so
+    // failing over to another model costs almost nothing and is far more
+    // useful than telling the user to try again later. lastGoodModel is
+    // tried first so a warm function keeps using whatever worked last time
+    // instead of re-hitting a chronically busy one every request.
+    var candidates = [];
+    function addCandidate(m) { if (m && candidates.indexOf(m) === -1) candidates.push(m); }
+    if (process.env.GEMINI_MODEL) {
+      addCandidate(process.env.GEMINI_MODEL); // explicit pin wins, no failover guessing past it
+    } else {
+      addCandidate(lastGoodModel);
+      MODEL_PREFERENCE.forEach(addCandidate);
     }
 
-    // If the model name itself is the problem (retired or renamed, which has
-    // already happened once here), ask Google what this key CAN use and
-    // retry with that, instead of falling back to another hardcoded name
-    // that may be dead too.
-    if (!r.ok && r.status === 404 && !process.env.GEMINI_MODEL) {
-      console.error('Gemini model "' + primaryModel + '" not found, discovering a replacement');
-      var listed = await listUsableModels(apiKey);
-      var replacement = listed.models ? pickModel(listed.models) : null;
-      if (replacement && replacement !== primaryModel) {
-        console.error('Retrying with discovered model "' + replacement + '"');
-        r = await callGemini(replacement, false);
-      } else if (listed.error) {
-        return json(502, { error: 'AI model unavailable',
-          detail: 'Model "' + primaryModel + '" no longer exists, and the model list could not be fetched to find a replacement (' + listed.error + ').' });
-      } else {
-        return json(502, { error: 'AI model unavailable',
-          detail: 'Model "' + primaryModel + '" no longer exists and no usable replacement was found for this API key.' });
+    var deadline = Date.now() + 22000;
+    var r = null, usedModel = null, lastErr = null, triedModels = [];
+
+    for (var ci = 0; ci < candidates.length; ci++) {
+      var model = candidates[ci];
+      var remaining = deadline - Date.now();
+      if (remaining < 3500) break;
+      triedModels.push(model);
+      try {
+        r = await callGemini(model, false, Math.min(remaining, 20000));
+      } catch (e) {
+        if (e.name === 'AbortError') {
+          return json(504, { error: 'AI request timed out', detail: 'Gemini did not respond in time. Questions that scan every ticket are the slowest - try narrowing it (a single year, a single device size, or open tickets only).' });
+        }
+        lastErr = String(e && e.message || e); r = null; continue;
+      }
+
+      if (r.ok) { usedModel = model; break; }
+
+      // Retired/renamed model: ask Google what this key can actually use.
+      if (r.status === 404 && !process.env.GEMINI_MODEL) {
+        var listed = await listUsableModels(apiKey);
+        if (listed.models) listed.models.forEach(function (m) { if (/flash/i.test(m) && !/thinking|image|audio|tts|embed/i.test(m)) addCandidate(m); });
+        continue;
+      }
+      // Overloaded / rate limited / transient server error: try the next model.
+      if (TRANSIENT_STATUS.indexOf(r.status) !== -1) {
+        lastErr = 'HTTP ' + r.status + ' from ' + model;
+        console.error('Gemini transient failure, failing over', lastErr);
+        continue;
+      }
+      break; // a real error (bad key, bad request) - stop and report it
+    }
+
+    if (r && r.ok) lastGoodModel = usedModel;
+
+    if (!r || !r.ok) {
+      if (r && r.status === 400) {
+        var checkText400 = await r.clone().text();
+        if (/thinking/i.test(checkText400)) {
+          console.error('Gemini rejected thinkingConfig, retrying without it');
+          r = await callGemini(triedModels[triedModels.length - 1], true, 18000);
+          if (r.ok) lastGoodModel = triedModels[triedModels.length - 1];
+        }
       }
     }
 
-    // If thinkingConfig itself isn't supported by whichever model resolved,
-    // retry once without it rather than failing the whole request.
-    if (!r.ok && r.status === 400) {
-      var checkText = await r.clone().text();
-      if (/thinking/i.test(checkText)) {
-        console.error('Gemini rejected thinkingConfig, retrying without it');
-        r = await callGemini(primaryModel, true);
-      }
+    if (!r) {
+      return json(502, { error: 'Could not reach Gemini', detail: (lastErr || 'unknown error') + ' (tried: ' + triedModels.join(', ') + ')' });
     }
-
     if (!r.ok) {
       var errText = await r.text();
       console.error('Gemini error', r.status, errText);
