@@ -1068,7 +1068,7 @@ input:checked+.slider:before{transform:translateX(16px)}
 // Bumped on every deploy. Shown in Settings -> System -> App Version, so
 // "did my change actually go live?" is answerable by looking, instead of
 // guessing whether the browser or CDN served a stale copy of this file.
-var APP_VERSION = 'b24 - 2026-09-24';
+var APP_VERSION = 'b25 - 2026-09-24';
 var SB_URL = 'https://aafszbfonkhwgiykwqrz.supabase.co';
 var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFhZnN6YmZvbmtod2dpeWt3cXJ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0NDM3MDAsImV4cCI6MjA5MDAxOTcwMH0.Vrmdjzg0HPNoPqWr9pREsAx5THBk8hkjBERggwidTO8';
 
@@ -1895,35 +1895,34 @@ async function checkAIConnection(){
 function printAIAnswer(id){
   var rec=_aiTableStore[id];
   if(!rec){toast('That answer is no longer available - ask again.');return;}
-  var printed=new Date().toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'});
-  var h='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Masjidal AI Report</title><style>'+getPrintBaseStyles()+
-    '.q-box{background:#F2F4F7 !important;border-radius:8px;padding:12px 15px;margin-bottom:16px}'+
-    '.q-lbl{font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#8A94A6;margin-bottom:4px}'+
-    '.q-txt{font-size:12px;color:#1A1D23;line-height:1.5}'+
-    '.a-txt{font-size:12.5px;color:#1A1D23;line-height:1.65;margin-bottom:16px;white-space:pre-wrap}'+
-    '.ai-tbl{width:100%;border-collapse:collapse;font-size:11px}'+
-    '.ai-tbl th{text-align:left;padding:0 9px 7px 9px;font-size:8.5px;text-transform:uppercase;letter-spacing:.5px;color:#8A94A6;border-bottom:1.5px solid #184CA1}'+
-    '.ai-tbl td{padding:8px 9px;border-bottom:1px solid #EDEFF2;line-height:1.45}'+
-    '.ai-tbl td:last-child{text-align:right;white-space:nowrap;font-weight:600}'+
-    '.ai-tbl tr:last-child td{border-bottom:none}'+
-    '@media print{.ai-tbl tr{page-break-inside:avoid}thead{display:table-header-group}}'+
-    '</style></head><body><div class="page">';
-  h+='<div class="hdr"><div class="hdr-left"><img src="data:image/png;base64,'+LOGO_TRANS_B64+'" alt="">'+
-     '<div><div class="hdr-title">Masjidal AI Report</div><div class="hdr-sub">Masjidal Division of Technical Repairs</div></div></div>'+
-     '<div class="hdr-right"><div class="hdr-printed">Printed '+_pe(printed)+'</div></div></div>';
-  h+='<hr class="accent-line">';
-  h+='<div class="q-box"><div class="q-lbl">Question asked</div><div class="q-txt">'+_pe(rec.question||'--')+'</div></div>';
-  h+='<div class="a-txt">'+_pe(rec.answer||'')+'</div>';
-  if(rec.table&&rec.table.length){
-    h+='<table class="ai-tbl"><thead><tr><th>Item</th><th style="text-align:right">Value</th></tr></thead><tbody>';
-    rec.table.forEach(function(row){
-      h+='<tr><td>'+_pe(row.label)+'</td><td>'+_pe(row.value)+'</td></tr>';
-    });
-    h+='</tbody></table>';
+
+  // The model returns the Zendesk numbers its answer covers; the rows are
+  // then built from OUR records for those tickets, never from the model's
+  // prose. So the printed document can't contain an invented ticket or a
+  // misremembered repair note - it is the same data the Issue Report prints.
+  var wanted={};
+  (rec.matchedTickets||[]).forEach(function(t){
+    var k=String(t).replace(/^\s*ZD\s*/i,'').trim();
+    if(k)wanted[k]=true;
+  });
+  var matched=_repairs.filter(canSeeRep).filter(function(r){
+    return r.zdid&&wanted[String(r.zdid).trim()];
+  });
+
+  if(!matched.length){
+    toast(Object.keys(wanted).length
+      ? 'Could not match those tickets to your records - try the Issue Report on All Repairs.'
+      : 'That answer is not about specific tickets, so there is nothing to tabulate.');
+    return;
   }
-  h+=getPrintSignatureHTML();
-  h+='</div></body></html>';
-  openPrintWindow(h);
+
+  openPrintWindow(issueReportDocHTML({
+    rows:buildIssueRows(matched),
+    thirdLabel:'Generated From',
+    thirdValue:'Masjidal AI',
+    criteriaHTML:'<strong>Question asked:</strong> '+_pe(rec.question||'')+
+      ' &nbsp;<strong>Summary:</strong> '+_pe(rec.answer||'')
+  }));
 }
 function exportAITableCSV(id){
   var rec=_aiTableStore[id];
@@ -2007,7 +2006,7 @@ async function askAI(){
       // Every answer gets export buttons, with or without a table - a
       // text-only answer is still worth handing to someone as a PDF.
       var ansId='t'+Date.now();
-      _aiTableStore[ansId]={question:question,answer:result.answer,table:result.table||[]};
+      _aiTableStore[ansId]={question:question,answer:result.answer,table:result.table||[],matchedTickets:result.matchedTickets||[]};
       var extraHtml='';
       if(result.table&&result.table.length){
         extraHtml+='<table>'+
@@ -3818,23 +3817,12 @@ function irRepairActions(notes){
   }
   return out;
 }
-function issueReportRows(){
-  var issueKw=irKeywords('ir-issue-kw'), notesKw=irKeywords('ir-notes-kw');
-  var from=document.getElementById('ir-from').value, to=document.getElementById('ir-to').value;
-  var type=document.getElementById('ir-type').value;
-  var dateField=document.getElementById('ir-datefield').value;
-  return _repairs.filter(canSeeRep).filter(function(r){
-    if(type&&r.type!==type)return false;
-    var d=r[dateField];
-    if(!d)return false;
-    var day=String(d).slice(0,10);
-    if(from&&day<from)return false;
-    if(to&&day>to)return false;
-    var rn=getRepairNotesText(r);
-    // No keywords at all = don't filter on text, just the date/type range.
-    if(!issueKw.length&&!notesKw.length)return true;
-    return irMatchesAny(r.issue,issueKw)||irMatchesAny(rn,notesKw);
-  }).map(function(r){
+// Maps repair records to report rows. Split out from issueReportRows() so
+// the same row shape (and therefore the same printed table) can be built
+// from any set of repairs - the keyword report, or the tickets an AI answer
+// identified.
+function buildIssueRows(repairs){
+  return repairs.map(function(r){
     var rn=getRepairNotesText(r);
     var actions=irRepairActions(rn);
     return {
@@ -3856,6 +3844,24 @@ function issueReportRows(){
   }).sort(function(a,b){
     return (a.size||'').localeCompare(b.size||'')||(b.opened||'').localeCompare(a.opened||'');
   });
+}
+function issueReportRows(){
+  var issueKw=irKeywords('ir-issue-kw'), notesKw=irKeywords('ir-notes-kw');
+  var from=document.getElementById('ir-from').value, to=document.getElementById('ir-to').value;
+  var type=document.getElementById('ir-type').value;
+  var dateField=document.getElementById('ir-datefield').value;
+  return buildIssueRows(_repairs.filter(canSeeRep).filter(function(r){
+    if(type&&r.type!==type)return false;
+    var d=r[dateField];
+    if(!d)return false;
+    var day=String(d).slice(0,10);
+    if(from&&day<from)return false;
+    if(to&&day>to)return false;
+    var rn=getRepairNotesText(r);
+    // No keywords at all = don't filter on text, just the date/type range.
+    if(!issueKw.length&&!notesKw.length)return true;
+    return irMatchesAny(r.issue,issueKw)||irMatchesAny(rn,notesKw);
+  }));
 }
 function irUpdateCount(){
   var el=document.getElementById('ir-count');if(!el)return;
@@ -3906,11 +3912,11 @@ function irFmtDate(ymd){
   if(!m)return ymd||'any';
   return IR_MONTHS[parseInt(m[2],10)-1]+' '+parseInt(m[3],10)+', '+m[1];
 }
-function printIssueReport(){
-  var rows=issueReportRows();
-  if(!rows.length){toast('No tickets match those filters.');return;}
-  var from=document.getElementById('ir-from').value, to=document.getElementById('ir-to').value;
-  var dateField=document.getElementById('ir-datefield').value==='closedAt'?'closed':'opened';
+// Builds the printable Device Issue Report document. Shared by the keyword
+// report and by the export of an AI answer, so both produce the exact same
+// columns and layout from the exact same row data.
+function issueReportDocHTML(opts){
+  var rows=opts.rows;
   var printed=new Date().toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'});
   var mbCount=rows.filter(function(r){return r.mbReplaced;}).length;
 
@@ -3943,7 +3949,7 @@ function printIssueReport(){
 
   h+='<div class="sumbar"><div>Devices Listed<strong>'+rows.length+'</strong></div>'+
      '<div>Motherboard Replaced<strong>'+mbCount+'</strong></div>'+
-     '<div>Date Range &middot; by date '+(dateField==='closed'?'closed':'opened')+'<strong style="font-size:13px">'+_pe(irFmtDate(from))+' &ndash; '+_pe(irFmtDate(to))+'</strong></div></div>';
+     '<div>'+_pe(opts.thirdLabel||'')+'<strong style="font-size:13px">'+_pe(opts.thirdValue||'')+'</strong></div></div>';
 
   h+='<table class="inv-tbl"><thead><tr>'+
      '<th class="c-zd nw">ZD</th><th class="c-ser nw">Serial #</th><th class="c-size nw">Size</th><th class="c-year nw">Year</th>'+
@@ -3961,13 +3967,25 @@ function printIssueReport(){
   });
   h+='</tbody></table>';
 
-  h+='<div class="crit"><strong>Report criteria:</strong> tickets whose reported issue or repair notes matched: '+
-     _pe(document.getElementById('ir-issue-kw').value)+(document.getElementById('ir-notes-kw').value?'; '+_pe(document.getElementById('ir-notes-kw').value):'')+
-     '. Serial # is left blank where none is on file, to be completed by hand.</div>';
-
+  h+='<div class="crit">'+opts.criteriaHTML+' Serial # is left blank where none is on file, to be completed by hand.</div>';
   h+=getPrintSignatureHTML();
   h+='</div></body></html>';
-  openPrintWindow(h);
+  return h;
+}
+
+function printIssueReport(){
+  var rows=issueReportRows();
+  if(!rows.length){toast('No tickets match those filters.');return;}
+  var from=document.getElementById('ir-from').value, to=document.getElementById('ir-to').value;
+  var byClosed=document.getElementById('ir-datefield').value==='closedAt';
+  openPrintWindow(issueReportDocHTML({
+    rows:rows,
+    thirdLabel:'Date Range \u00b7 by date '+(byClosed?'closed':'opened'),
+    thirdValue:irFmtDate(from)+' \u2013 '+irFmtDate(to),
+    criteriaHTML:'<strong>Report criteria:</strong> tickets whose reported issue or repair notes matched: '+
+      _pe(document.getElementById('ir-issue-kw').value)+
+      (document.getElementById('ir-notes-kw').value?'; '+_pe(document.getElementById('ir-notes-kw').value):'')+'.'
+  }));
 }
 function togglePartIdentifierField(){
   var at=document.getElementById('part-androidtype').value;

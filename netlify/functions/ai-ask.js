@@ -28,7 +28,12 @@ var RESPONSE_SCHEMA = {
         properties: { label: { type: 'STRING' }, value: { type: 'STRING' } },
         required: ['label', 'value']
       }
-    }
+    },
+    // Zendesk numbers of the tickets the answer is about. The app uses these
+    // to rebuild a printable table from its OWN records rather than from the
+    // model's prose, so the exported document can't contain a ticket the
+    // model invented or a detail it paraphrased wrong.
+    matchedTickets: { type: 'ARRAY', items: { type: 'STRING' } }
   },
   required: ['answer']
 };
@@ -49,6 +54,7 @@ var SYSTEM_PROMPT = 'You are a data analyst answering questions about a device r
   'Only fill in the "table" field when the question asks for a breakdown/ranking/comparison ACROSS MULTIPLE categories (e.g. "how many by X", "top issues", "android 6 vs 11", "which size has the most issues") - one row per category as {label, value}, sorted most-to-least relevant. ' +
   'A question asking for a single total (e.g. "how many X were sent today") does NOT need a table - just state the number in the answer text and omit the table field (or leave it empty) to keep the response short. ' +
   'ALSO use the table when the question asks you to LIST specific tickets/devices matching some criteria. In that case put one row PER TICKET: "label" is the ticket\'s Zendesk number formatted as "ZD 13082" (use the zdid field; if zdid is null, use the device size and year instead), and "value" is a short description combining what the issue was and what was done about it, drawn from issue/repairNotes/outcome - e.g. "Turns on and off - motherboard replaced". Include every matching ticket, and state the total count in the answer text. ' +
+  'ALWAYS populate "matchedTickets" with the zdid of every ticket your answer covers, whenever the question is about specific tickets or devices (listing them, counting them, or filtering them). Use the raw zdid value exactly as given, with no "ZD " prefix. Include every matching ticket even when the answer text only summarises them, and leave it empty only for questions that are not about particular tickets at all. The app rebuilds a printable report from these ids using its own records, so getting this list right and complete matters more than the prose. '
   'When the question is about what was DONE to a device (a part replaced, a repair performed, e.g. "which ones had a motherboard replacement"), judge that from repairNotes first and outcome second - do NOT infer it from the issue text, which only describes the customer\'s complaint. If repairNotes is null for a ticket, you cannot tell what was done to it, so do not claim a specific repair was performed on it.';
 
 // Model names get retired - gemini-2.0-flash was hardcoded here until
@@ -342,7 +348,7 @@ exports.handler = async function (event) {
       return json(502, { error: 'AI response was cut off or malformed', detail: finishReason === 'MAX_TOKENS' ? 'The response hit the token limit - try a more specific question.' : 'Could not parse the AI response.' });
     }
 
-    return json(200, { answer: parsed.answer || '', table: parsed.table || [] });
+    return json(200, { answer: parsed.answer || '', table: parsed.table || [], matchedTickets: parsed.matchedTickets || [] });
   } catch (e) {
     console.error(e);
     return json(500, { error: 'AI request failed', detail: String(e) });
