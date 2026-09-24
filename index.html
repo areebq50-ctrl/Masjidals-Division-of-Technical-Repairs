@@ -1070,7 +1070,7 @@ input:checked+.slider:before{transform:translateX(16px)}
 // Bumped on every deploy. Shown in Settings -> System -> App Version, so
 // "did my change actually go live?" is answerable by looking, instead of
 // guessing whether the browser or CDN served a stale copy of this file.
-var APP_VERSION = 'b32 - 2026-09-24';
+var APP_VERSION = 'b33 - 2026-09-24';
 var SB_URL = 'https://aafszbfonkhwgiykwqrz.supabase.co';
 var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFhZnN6YmZvbmtod2dpeWt3cXJ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0NDM3MDAsImV4cCI6MjA5MDAxOTcwMH0.Vrmdjzg0HPNoPqWr9pREsAx5THBk8hkjBERggwidTO8';
 
@@ -4018,6 +4018,14 @@ function irRepairActions(notes){
 // the same row shape (and therefore the same printed table) can be built
 // from any set of repairs - the keyword report, or the tickets an AI answer
 // identified.
+// True when a follow-up ticket exists because we replaced the device,
+// rather than because it came back for more repair work. Checked from the
+// close-out outcome first, then the technician's notes.
+function isReplacementFollowUp(r){
+  if(getBaseOutcome(r.outcome||'')==='replacement')return true;
+  var t=(getRepairNotesText(r)+' '+(r.outcome||''));
+  return /(send|sent|sending|provide|providing|issue|issued)\s+(?:a\s+|the\s+)?replacement|replacement\s+(?:was\s+)?(?:sent|shipped|issued|provided)/i.test(t);
+}
 function buildIssueRows(repairs){
   // Guard against the same record being rendered twice. Two DIFFERENT
   // repairs can legitimately share one Zendesk ticket (a replacement device
@@ -4030,10 +4038,31 @@ function buildIssueRows(repairs){
     if(seen[k])return false;
     seen[k]=true;return true;
   });
+  // A follow-up that exists because a replacement was sent is not a second
+  // device to report - it is the outcome of the first one. Fold it into its
+  // parent as a note instead of listing it as its own row, so a supplier
+  // sees one device with what ultimately happened to it.
+  var byId={};
+  repairs.forEach(function(r){if(r&&r.id)byId[r.id]=r;});
+  var rolledInto={};
+  repairs.forEach(function(r){
+    if(!r.relatedTo||!byId[r.relatedTo])return;   // parent not in this report - keep it standalone
+    if(!isReplacementFollowUp(r))return;          // a follow-up repair, not a replacement - keep it
+    var note='Customer sent the device back after the repair';
+    var why=(r.issue||'').trim().replace(/\s+/g,' ');
+    if(why)note+=' because '+why.replace(/\.*$/,'');
+    note+=(/[.!?]$/.test(note)?'':'.')+' We had to send a replacement.';
+    (rolledInto[r.relatedTo]=rolledInto[r.relatedTo]||[]).push(note);
+    r.__rolledUp=true;
+  });
+  repairs=repairs.filter(function(r){return !r.__rolledUp;});
+  repairs.forEach(function(r){delete r.__rolledUp;});
+
   return repairs.map(function(r){
     var rn=getRepairNotesText(r);
     var actions=irRepairActions(rn);
     return {
+      followUpNotes:(rolledInto[r.id]||[]),
       zd:r.zdid?('ZD '+r.zdid):(r.ticket||''),
       // Shown under the ZD so two repairs on the same Zendesk ticket are
       // visibly distinct rather than looking like a duplicated row.
@@ -4139,6 +4168,7 @@ function issueReportDocHTML(opts){
     '.inv-tbl tr:last-child td{border-bottom:none}'+
     '.inv-tbl td.nw,.inv-tbl th.nw{white-space:nowrap}'+
     '.c-zd{width:76px;font-weight:700}'+
+    '.fu-note{display:block;margin-top:5px;padding-top:4px;border-top:1px dotted #D3D8E0;color:#7A8494;font-style:italic;line-height:1.4}'+
     '.sub-id{display:block;font-weight:400;font-size:8.5px;color:#8A94A6;margin-top:2px;letter-spacing:.2px}'+
     // Serial is an empty write-in box - most customer repairs have no serial
     // on file, so it's filled in by hand on paper.
@@ -4180,7 +4210,10 @@ function issueReportDocHTML(opts){
        (r.ticket?'<span class="sub-id">'+_pe(r.ticket)+(r.isFollowUp?' &middot; follow-up':'')+'</span>':'')+'</td>'+
        '<td class="c-size">'+_pe(r.size||'--')+'</td><td class="c-year nw">'+_pe(r.year||'--')+'</td>'+
        '<td>'+_pe(r.issue||'--')+'</td>'+
-       '<td>'+(r.repairNotes?_pe(r.repairNotes):'<span class="muted">not recorded</span>')+'</td>'+
+       '<td>'+(r.repairNotes?_pe(r.repairNotes):'<span class="muted">not recorded</span>')+
+         (r.followUpNotes&&r.followUpNotes.length
+            ? r.followUpNotes.map(function(n){return'<span class="fu-note">'+_pe(n)+'</span>';}).join('')
+            : '')+'</td>'+
        '<td class="c-out">'+(r.actions.length
           ? r.actions.map(function(a){return'<span class="act">'+_pe(a)+'</span>';}).join('')
           : '<span class="muted">no repair recorded</span>')+'</td></tr>'+
