@@ -548,6 +548,7 @@ input:checked+.slider:before{transform:translateX(16px)}
         <select class="fsel" id="allTypeF" onchange="renderAllRepairs()"><option value="">All Types</option><option value="customer">Customer</option><option value="general">General</option><option value="amazon">Amazon</option></select>
         <select class="fsel" id="allStatusF" onchange="renderAllRepairs()"><option value="">All Statuses</option><option value="Not Repaired Yet">Not Repaired Yet</option><option value="In Progress">In Progress</option><option value="Completed Testing">Completed/Testing</option><option value="Replacement Needed">Replacement Needed</option><option value="Shipped Back">Shipped Back</option></select>
         <select class="fsel admin-only" id="allTechF" onchange="renderAllRepairs()"><option value="">All Technicians</option></select>
+        <button class="btn btn-ghost btn-sm hide-support" onclick="openIssueReport()" title="Build a printable issue report for a supplier"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z"/></svg>Issue Report</button>
       </div>
       <div class="table-wrap">
         <div class="t-head" style="grid-template-columns:90px 1fr 100px 150px 130px 100px 70px">
@@ -978,6 +979,30 @@ input:checked+.slider:before{transform:translateX(16px)}
   </div>
 </div>
 
+<!-- ISSUE REPORT (SUPPLIER) MODAL -->
+<div class="overlay hidden" id="issueReportModal" onclick="if(event.target===this)closeIssueReportModal()">
+  <div class="modal modal-sm">
+    <div class="modal-hdr"><h2>Issue Report</h2><button class="mc" onclick="closeIssueReportModal()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button></div>
+    <div class="modal-body">
+      <p style="font-size:12px;color:var(--text2);margin-bottom:14px">Builds a printable report (for a supplier, etc.). A ticket is included if its <strong>issue</strong> matches any keyword below <strong>or</strong> its <strong>repair notes</strong> do. The PDF has a blank <strong>Serial #</strong> column to fill in by hand.</p>
+      <div class="fg"><label>Issue contains any of <span style="font-weight:400;color:var(--text3)">(comma separated)</span></label>
+        <textarea class="fc" id="ir-issue-kw" style="min-height:58px;resize:vertical"></textarea></div>
+      <div class="fg"><label>…or repair notes contain any of</label>
+        <textarea class="fc" id="ir-notes-kw" style="min-height:44px;resize:vertical"></textarea></div>
+      <div class="form-row">
+        <div class="fg"><label>From</label><input class="fc" id="ir-from" type="date"></div>
+        <div class="fg"><label>To</label><input class="fc" id="ir-to" type="date"></div>
+      </div>
+      <div class="form-row">
+        <div class="fg"><label>Ticket Type</label><select class="fc" id="ir-type"><option value="customer">Customer repairs only</option><option value="">All types</option><option value="general">General</option><option value="amazon">Amazon</option></select></div>
+        <div class="fg"><label>Date Range Uses</label><select class="fc" id="ir-datefield"><option value="createdAt">Date opened</option><option value="closedAt">Date closed</option></select></div>
+      </div>
+      <div style="font-size:11px;color:var(--text3)" id="ir-count"></div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-ghost" onclick="closeIssueReportModal()">Cancel</button><button class="btn btn-ghost" onclick="exportIssueReportCSV()">Export CSV</button><button class="btn btn-primary" onclick="printIssueReport()">Print / PDF</button></div>
+  </div>
+</div>
+
 <!-- PARTS INVENTORY: ADD/EDIT PART MODAL -->
 <div class="overlay hidden" id="partModal" onclick="if(event.target===this)closePartModal()">
   <div class="modal modal-sm">
@@ -1042,7 +1067,7 @@ input:checked+.slider:before{transform:translateX(16px)}
 // Bumped on every deploy. Shown in Settings -> System -> App Version, so
 // "did my change actually go live?" is answerable by looking, instead of
 // guessing whether the browser or CDN served a stale copy of this file.
-var APP_VERSION = 'b17 - 2026-09-24';
+var APP_VERSION = 'b18 - 2026-09-24';
 var SB_URL = 'https://aafszbfonkhwgiykwqrz.supabase.co';
 var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFhZnN6YmZvbmtod2dpeWt3cXJ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0NDM3MDAsImV4cCI6MjA5MDAxOTcwMH0.Vrmdjzg0HPNoPqWr9pREsAx5THBk8hkjBERggwidTO8';
 
@@ -3621,6 +3646,158 @@ function printPartsInventory(){
   h+='</div></body></html>';
   openPrintWindow(h);
 }
+// ===== ISSUE REPORT (supplier-facing printable list) =====
+// Mirrors the hand-written SQL this replaces: a ticket matches if its issue
+// text OR its repair notes contain any of the given keywords, within a date
+// range. Year and repair notes are read with the notes-bracket fallback
+// (getRepairNotesText/partYearFromNotes), because on older records they live
+// inside the [YEAR:...|REPNOTES:...] metadata rather than in their own
+// columns - reading only the columns silently drops those tickets.
+var IR_DEFAULT_ISSUE_KW='turning on, turn on, turns on, wont turn on, won\'t turn on, not turning on, does not turn on, powers off, power off, powering off, shuts off, shutting off, shut down, no power, dead, will not boot, wont boot, boot loop, restarting, on and off';
+var IR_DEFAULT_NOTES_KW='motherboard, mother board, mobo, main board, flash failed, flashing failed, failed to flash';
+
+function irKeywords(id){
+  return (document.getElementById(id).value||'').split(',')
+    .map(function(s){return s.trim().toLowerCase();}).filter(Boolean);
+}
+function irMatchesAny(text,kws){
+  if(!text)return false;
+  var t=String(text).toLowerCase();
+  for(var i=0;i<kws.length;i++){if(t.indexOf(kws[i])!==-1)return true;}
+  return false;
+}
+function issueReportRows(){
+  var issueKw=irKeywords('ir-issue-kw'), notesKw=irKeywords('ir-notes-kw');
+  var from=document.getElementById('ir-from').value, to=document.getElementById('ir-to').value;
+  var type=document.getElementById('ir-type').value;
+  var dateField=document.getElementById('ir-datefield').value;
+  return _repairs.filter(canSeeRep).filter(function(r){
+    if(type&&r.type!==type)return false;
+    var d=r[dateField];
+    if(!d)return false;
+    var day=String(d).slice(0,10);
+    if(from&&day<from)return false;
+    if(to&&day>to)return false;
+    var rn=getRepairNotesText(r);
+    // No keywords at all = don't filter on text, just the date/type range.
+    if(!issueKw.length&&!notesKw.length)return true;
+    return irMatchesAny(r.issue,issueKw)||irMatchesAny(rn,notesKw);
+  }).map(function(r){
+    var rn=getRepairNotesText(r);
+    return {
+      zd:r.zdid?('ZD '+r.zdid):(r.ticket||''),
+      serial:r.serial||'',
+      size:r.size||'',
+      year:r.year||partYearFromNotes(r)||'',
+      issue:r.issue||'',
+      repairNotes:rn||'',
+      mbReplaced:/mother\s*board|motherboard|mobo|main\s*board/i.test(rn+' '+(r.outcome||'')),
+      flashFailed:/flash\w*[^.]{0,40}(fail|unsuccessful)|fail\w*[^.]{0,40}flash/i.test(rn),
+      status:r.status||'',
+      opened:r.createdAt?String(r.createdAt).slice(0,10):'',
+      closed:r.closedAt?String(r.closedAt).slice(0,10):''
+    };
+  }).sort(function(a,b){
+    return (a.size||'').localeCompare(b.size||'')||(b.opened||'').localeCompare(a.opened||'');
+  });
+}
+function irUpdateCount(){
+  var el=document.getElementById('ir-count');if(!el)return;
+  try{var n=issueReportRows().length;el.textContent=n+' ticket'+(n===1?'':'s')+' match right now.';}
+  catch(e){el.textContent='';}
+}
+function openIssueReport(){
+  var today=new Date();
+  var from=new Date();from.setMonth(from.getMonth()-1);
+  function iso(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+  document.getElementById('ir-issue-kw').value=IR_DEFAULT_ISSUE_KW;
+  document.getElementById('ir-notes-kw').value=IR_DEFAULT_NOTES_KW;
+  document.getElementById('ir-from').value=iso(from);
+  document.getElementById('ir-to').value=iso(today);
+  document.getElementById('ir-type').value='customer';
+  document.getElementById('ir-datefield').value='createdAt';
+  ['ir-issue-kw','ir-notes-kw','ir-from','ir-to','ir-type','ir-datefield'].forEach(function(id){
+    var el=document.getElementById(id);if(el)el.oninput=el.onchange=irUpdateCount;
+  });
+  irUpdateCount();
+  document.getElementById('issueReportModal').classList.remove('hidden');
+}
+function closeIssueReportModal(){document.getElementById('issueReportModal').classList.add('hidden');}
+
+function exportIssueReportCSV(){
+  var rows=issueReportRows();
+  if(!rows.length){toast('No tickets match those filters.');return;}
+  var labels=['ZD / Ticket','Serial #','Device Size','Year','Issue','Repair Notes','Motherboard Replaced','Flash Failed','Status','Opened','Closed'];
+  var csv=labels.join(',')+'\r\n'+rows.map(function(r){
+    return [r.zd,r.serial,r.size,r.year,r.issue,r.repairNotes,r.mbReplaced?'YES':'',r.flashFailed?'YES':'',r.status,r.opened,r.closed]
+      .map(csvEscape).join(',');
+  }).join('\r\n');
+  var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url;a.download='masjidal-issue-report-'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('Exported '+rows.length+' tickets to CSV');
+}
+
+function printIssueReport(){
+  var rows=issueReportRows();
+  if(!rows.length){toast('No tickets match those filters.');return;}
+  var from=document.getElementById('ir-from').value, to=document.getElementById('ir-to').value;
+  var dateField=document.getElementById('ir-datefield').value==='closedAt'?'closed':'opened';
+  var printed=new Date().toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'});
+  var mbCount=rows.filter(function(r){return r.mbReplaced;}).length;
+
+  var h='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Device Issue Report</title><style>'+getPrintBaseStyles()+
+    '.inv-tbl{width:100%;border-collapse:collapse;font-size:10.5px;margin-top:10px}'+
+    '.inv-tbl th{text-align:left;background:#F2F4F7 !important;padding:6px 7px;font-size:8.5px;text-transform:uppercase;letter-spacing:.4px;color:#6B7280;border-bottom:1px solid #E5E7EB}'+
+    '.inv-tbl td{padding:7px;border-bottom:1px solid #F0F1F3;vertical-align:top}'+
+    // Identifiers and dates read badly broken across lines; the free-text
+    // columns are the ones that should absorb the wrapping instead.
+    '.inv-tbl td.nw,.inv-tbl th.nw{white-space:nowrap}'+
+    // Serial is intentionally an empty write-in box - most customer repairs
+    // never have a serial recorded, so this is filled in by hand on paper.
+    '.serial-cell{border-bottom:1px solid #9AA3B2 !important;min-width:120px;white-space:nowrap}'+
+    '.pill{display:inline-block;padding:1px 6px;border-radius:10px;font-size:8.5px;font-weight:700;background:#FEE2E2 !important;color:#991B1B}'+
+    '.sumbar{display:flex;gap:22px;background:#F2F4F7 !important;border-radius:8px;padding:11px 14px;margin-bottom:4px}'+
+    '.sumbar div{font-size:11px;color:#6B7280}.sumbar strong{display:block;font-size:17px;color:#1A1D23;margin-top:1px}'+
+    '.crit{font-size:10.5px;color:#6B7280;margin:10px 0 0 0;line-height:1.5}'+
+    '@media print{.inv-tbl tr{page-break-inside:avoid}thead{display:table-header-group}}'+
+    '</style></head><body><div class="page">';
+
+  h+='<div class="hdr"><div class="hdr-left"><img src="data:image/png;base64,'+LOGO_TRANS_B64+'" alt="">'+
+     '<div><div class="hdr-title">Device Issue Report</div><div class="hdr-sub">Masjidal Division of Technical Repairs</div></div></div>'+
+     '<div class="hdr-right"><div class="hdr-printed">Printed '+_pe(printed)+'</div></div></div>';
+  h+='<hr class="accent-line">';
+
+  h+='<div class="sumbar"><div>Devices Listed<strong>'+rows.length+'</strong></div>'+
+     '<div>Motherboard Replaced<strong>'+mbCount+'</strong></div>'+
+     '<div>Date Range ('+dateField+')<strong style="font-size:13px">'+_pe(from||'any')+' to '+_pe(to||'any')+'</strong></div></div>';
+
+  h+='<table class="inv-tbl"><thead><tr>'+
+     '<th class="nw">ZD / Ticket</th><th class="nw">Serial #</th><th class="nw">Size</th><th class="nw">Year</th>'+
+     '<th>Reported Issue</th><th>Repair / Findings</th><th class="nw">Status</th><th class="nw">'+(dateField==='closed'?'Closed':'Opened')+'</th>'+
+     '</tr></thead><tbody>';
+  rows.forEach(function(r){
+    h+='<tr><td class="nw"><strong>'+_pe(r.zd)+'</strong></td>'+
+       '<td class="serial-cell">'+_pe(r.serial)+'</td>'+
+       '<td class="nw">'+_pe(r.size||'--')+'</td><td class="nw">'+_pe(r.year||'--')+'</td>'+
+       '<td>'+_pe(r.issue||'--')+'</td>'+
+       '<td>'+(r.repairNotes?_pe(r.repairNotes):'<span style="color:#9AA3B2">no repair notes recorded</span>')+
+         (r.mbReplaced?' <span class="pill">MOTHERBOARD REPLACED</span>':'')+'</td>'+
+       '<td class="nw">'+_pe(r.status||'--')+'</td>'+
+       '<td class="nw">'+_pe((dateField==='closed'?r.closed:r.opened)||'--')+'</td></tr>';
+  });
+  h+='</tbody></table>';
+
+  h+='<div class="crit"><strong>Report criteria:</strong> tickets whose reported issue or repair notes matched: '+
+     _pe(document.getElementById('ir-issue-kw').value)+(document.getElementById('ir-notes-kw').value?'; '+_pe(document.getElementById('ir-notes-kw').value):'')+
+     '. The Serial # column is intentionally left blank where no serial is on file, to be filled in by hand.</div>';
+
+  h+='</div></body></html>';
+  openPrintWindow(h);
+}
 function togglePartIdentifierField(){
   var at=document.getElementById('part-androidtype').value;
   var fwGroup=document.getElementById('partFirmwareGroup'), pdGroup=document.getElementById('partProdDateGroup');
@@ -3831,7 +4008,7 @@ async function confirmReset(){
 
 function toggleSidebar(){var sb=document.getElementById('sidebar');var ov=document.getElementById('sidebarOverlay');var open=sb.classList.toggle('open');ov.style.display=open?'block':'none';}
 function closeSidebar(){if(window.innerWidth<=700){var sb=document.getElementById('sidebar');var ov=document.getElementById('sidebarOverlay');if(sb)sb.classList.remove('open');if(ov)ov.style.display='none';}}
-document.addEventListener('keydown',function(e){if(e.key==='Escape')['repairModal','detailModal','closeModal','trackModal','empModal','digestModal','partModal','partQtyModal'].forEach(function(id){var el=document.getElementById(id);if(el)el.classList.add('hidden');});});
+document.addEventListener('keydown',function(e){if(e.key==='Escape')['repairModal','detailModal','closeModal','trackModal','empModal','digestModal','partModal','partQtyModal','issueReportModal'].forEach(function(id){var el=document.getElementById(id);if(el)el.classList.add('hidden');});});
 
 async function initApp(){
   setLoading('Connecting to cloud...');
