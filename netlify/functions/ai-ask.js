@@ -148,17 +148,24 @@ async function runDiagnostics(apiKey) {
         out.verdict = 'The key works but is being rate limited (quota exceeded). If it is a free-tier key, enable billing on its Google Cloud project.';
         return out;
       }
-      if (TRANSIENT_STATUS.indexOf(r.status) === -1) {
+      // A 404 here means Google lists the model for this key but will not
+      // actually serve generateContent on it - which happens - so it is a
+      // reason to skip that model, not to declare the setup broken. Same for
+      // a 503. Only a genuine rejection (bad request, bad key) stops the walk.
+      if (r.status !== 404 && TRANSIENT_STATUS.indexOf(r.status) === -1) {
         out.verdict = 'Model "' + m + '" rejected a test call with HTTP ' + r.status + '. See lastTestError.';
         return out;
       }
-      // transient - try the next model
+      if (r.status === 404) out.unusableModels = (out.unusableModels || []).concat(m);
     } catch (e) {
       out.testedModels.push(m + ': ' + String(e && e.message || e));
       out.lastTestError = String(e && e.message || e);
     }
   }
-  out.verdict = 'Your API key is valid, but every model tried is currently overloaded on Google\'s side (HTTP 503). This is temporary and not a problem with your setup - the app retries across models automatically, so try your question again in a minute.';
+  var overloaded = (out.testedModels || []).filter(function (t) { return /HTTP (429|500|502|503|504)/.test(t); }).length;
+  out.verdict = overloaded
+    ? 'Your API key is valid, but every model tried is currently overloaded on Google\'s side. This is temporary and not a problem with your setup - the app retries across models automatically, so try your question again in a minute.'
+    : 'Your API key is valid, but none of the preferred models would serve a request (see Models tried). The app falls back to other models automatically, so Ask AI may still work - try a question. If it does not, set GEMINI_MODEL in Netlify to one of the listed available models.';
   return out;
 }
 
@@ -258,6 +265,7 @@ exports.handler = async function (event) {
     // difference between "try again later" and an answer.
     var deadline = Date.now() + 22000;
     var r = null, usedModel = null, lastErr = null, triedModels = [], sawTransient = false;
+    var dead = {}, discovered = false;
 
     outer:
     for (var pass = 0; pass < SWEEP_BACKOFF_MS.length; pass++) {
@@ -268,6 +276,7 @@ exports.handler = async function (event) {
       }
       for (var ci = 0; ci < candidates.length; ci++) {
         var model = candidates[ci];
+        if (dead[model]) continue;
         var remaining = deadline - Date.now();
         // Keep enough room for a real generation; don't start one we can't finish.
         if (remaining < 4000) break outer;
@@ -283,10 +292,18 @@ exports.handler = async function (event) {
 
         if (r.ok) { usedModel = model; break outer; }
 
-        // Retired/renamed model: ask Google what this key can actually use.
+        // 404 means this key cannot actually use that model, whether it was
+        // retired or simply is not served for this key (Google's model list
+        // can include names that then 404 on generateContent). Drop it so
+        // later sweeps don't keep paying for the same refusal, and discover
+        // real alternatives once rather than on every 404.
         if (r.status === 404 && !process.env.GEMINI_MODEL) {
-          var listed = await listUsableModels(apiKey);
-          if (listed.models) listed.models.forEach(function (m) { if (/flash|pro/i.test(m) && !/thinking|image|audio|tts|embed|preview/i.test(m)) addCandidate(m); });
+          dead[model] = true;
+          if (!discovered) {
+            discovered = true;
+            var listed = await listUsableModels(apiKey);
+            if (listed.models) listed.models.forEach(function (m) { if (/flash|pro/i.test(m) && !/thinking|image|audio|tts|embed|preview/i.test(m)) addCandidate(m); });
+          }
           continue;
         }
         // Overloaded / rate limited / transient: try the next model, then sweep again.
