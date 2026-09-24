@@ -61,13 +61,15 @@ var SYSTEM_PROMPT = 'You are a data analyst answering questions about a device r
 // Google shut it down on 2026-06-01, which broke Ask AI outright. Rather
 // than hardcode a replacement that will eventually die the same way, ask
 // Google which models the key can actually use and pick from that.
-var MODEL_PREFERENCE = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-flash-lite-latest', 'gemini-2.0-flash'];
+var MODEL_PREFERENCE = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-flash-lite-latest', 'gemini-2.5-pro', 'gemini-2.0-flash'];
 // Statuses that mean "Google is busy", not "your request is wrong" -
 // worth failing over to a different model rather than giving up.
 var TRANSIENT_STATUS = [429, 500, 502, 503, 504];
 // Remembered across warm invocations so a busy model isn't re-tried
 // first on every single request.
 var lastGoodModel = null;
+// Sweeps over the candidate list: immediate, then after short pauses.
+var SWEEP_BACKOFF_MS = [0, 700, 1800];
 
 async function listUsableModels(apiKey) {
   var controller = new AbortController();
@@ -249,38 +251,53 @@ exports.handler = async function (event) {
       MODEL_PREFERENCE.forEach(addCandidate);
     }
 
+    // A 503 often clears within a couple of seconds, so sweep the candidate
+    // list more than once with a short backoff rather than giving up after a
+    // single refusal from each. Refusals come back fast (a few hundred ms),
+    // so a whole extra sweep costs far less than the 22s budget and is the
+    // difference between "try again later" and an answer.
     var deadline = Date.now() + 22000;
-    var r = null, usedModel = null, lastErr = null, triedModels = [];
+    var r = null, usedModel = null, lastErr = null, triedModels = [], sawTransient = false;
 
-    for (var ci = 0; ci < candidates.length; ci++) {
-      var model = candidates[ci];
-      var remaining = deadline - Date.now();
-      if (remaining < 3500) break;
-      triedModels.push(model);
-      try {
-        r = await callGemini(model, false, Math.min(remaining, 20000));
-      } catch (e) {
-        if (e.name === 'AbortError') {
-          return json(504, { error: 'AI request timed out', detail: 'Gemini did not respond in time. Questions that scan every ticket are the slowest - try narrowing it (a single year, a single device size, or open tickets only).' });
+    outer:
+    for (var pass = 0; pass < SWEEP_BACKOFF_MS.length; pass++) {
+      if (pass > 0) {
+        var wait = SWEEP_BACKOFF_MS[pass];
+        if (deadline - Date.now() < wait + 5000) break;
+        await new Promise(function (res) { setTimeout(res, wait); });
+      }
+      for (var ci = 0; ci < candidates.length; ci++) {
+        var model = candidates[ci];
+        var remaining = deadline - Date.now();
+        // Keep enough room for a real generation; don't start one we can't finish.
+        if (remaining < 4000) break outer;
+        triedModels.push(model + (pass ? '#' + (pass + 1) : ''));
+        try {
+          r = await callGemini(model, false, Math.min(remaining - 500, 18000));
+        } catch (e) {
+          if (e.name === 'AbortError') {
+            return json(504, { error: 'AI request timed out', detail: 'Gemini did not respond in time. Questions that scan every ticket are the slowest - try narrowing it (a single year, a single device size, or open tickets only).' });
+          }
+          lastErr = String(e && e.message || e); r = null; continue;
         }
-        lastErr = String(e && e.message || e); r = null; continue;
-      }
 
-      if (r.ok) { usedModel = model; break; }
+        if (r.ok) { usedModel = model; break outer; }
 
-      // Retired/renamed model: ask Google what this key can actually use.
-      if (r.status === 404 && !process.env.GEMINI_MODEL) {
-        var listed = await listUsableModels(apiKey);
-        if (listed.models) listed.models.forEach(function (m) { if (/flash/i.test(m) && !/thinking|image|audio|tts|embed/i.test(m)) addCandidate(m); });
-        continue;
+        // Retired/renamed model: ask Google what this key can actually use.
+        if (r.status === 404 && !process.env.GEMINI_MODEL) {
+          var listed = await listUsableModels(apiKey);
+          if (listed.models) listed.models.forEach(function (m) { if (/flash|pro/i.test(m) && !/thinking|image|audio|tts|embed|preview/i.test(m)) addCandidate(m); });
+          continue;
+        }
+        // Overloaded / rate limited / transient: try the next model, then sweep again.
+        if (TRANSIENT_STATUS.indexOf(r.status) !== -1) {
+          sawTransient = true;
+          lastErr = 'HTTP ' + r.status + ' from ' + model;
+          console.error('Gemini transient failure, failing over', lastErr);
+          continue;
+        }
+        break outer; // a real error (bad key, bad request) - stop and report it
       }
-      // Overloaded / rate limited / transient server error: try the next model.
-      if (TRANSIENT_STATUS.indexOf(r.status) !== -1) {
-        lastErr = 'HTTP ' + r.status + ' from ' + model;
-        console.error('Gemini transient failure, failing over', lastErr);
-        continue;
-      }
-      break; // a real error (bad key, bad request) - stop and report it
     }
 
     if (r && r.ok) lastGoodModel = usedModel;
@@ -308,9 +325,9 @@ exports.handler = async function (event) {
         return json(502, { error: 'AI is rate limited right now',
           detail: 'Gemini rejected the request for exceeding its quota (requests or tokens per minute). Wait a minute and try again, or ask a narrower question so less data is sent. If this keeps happening, the API key is likely on the free tier and needs billing enabled.' });
       }
-      if (r.status === 503 || r.status === 500) {
-        return json(502, { error: 'Gemini is temporarily unavailable',
-          detail: 'Google returned ' + r.status + ' (model overloaded). This is on their end - try again in a moment.' });
+      if (TRANSIENT_STATUS.indexOf(r.status) !== -1) {
+        return json(502, { error: 'Gemini is overloaded right now',
+          detail: 'Every model was retried and all returned HTTP ' + r.status + ' (' + triedModels.length + ' attempts across ' + candidates.length + ' models). This is capacity on Google\'s side, not your setup or your data. Wait a minute and ask again - a shorter question (one device size, or a narrower date range) is also more likely to get through while they are busy.' });
       }
       return json(502, { error: 'AI request failed', detail: 'Gemini returned ' + r.status + ': ' + errText.substring(0, 400) });
     }
