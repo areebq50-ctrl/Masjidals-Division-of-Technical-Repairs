@@ -1067,7 +1067,7 @@ input:checked+.slider:before{transform:translateX(16px)}
 // Bumped on every deploy. Shown in Settings -> System -> App Version, so
 // "did my change actually go live?" is answerable by looking, instead of
 // guessing whether the browser or CDN served a stale copy of this file.
-var APP_VERSION = 'b19 - 2026-09-24';
+var APP_VERSION = 'b20 - 2026-09-24';
 var SB_URL = 'https://aafszbfonkhwgiykwqrz.supabase.co';
 var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFhZnN6YmZvbmtod2dpeWt3cXJ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0NDM3MDAsImV4cCI6MjA5MDAxOTcwMH0.Vrmdjzg0HPNoPqWr9pREsAx5THBk8hkjBERggwidTO8';
 
@@ -1348,10 +1348,13 @@ var DTR_SIGNER_TITLE='Head of Masjidal\'s Division of Technical Repairs';
 var DTR_SIGNER_EMAIL='areeb.qureshi@masjidal.com';
 function getPrintSignatureHTML(){
   return '<div class="sig-block">'+
-    '<div class="sig-rule"></div>'+
-    '<div class="sig-name">'+DTR_SIGNER_NAME+'</div>'+
-    '<div class="sig-title">'+DTR_SIGNER_TITLE+'</div>'+
-    '<div class="sig-email">'+DTR_SIGNER_EMAIL+'</div>'+
+    '<img class="sig-logo" src="data:image/png;base64,'+LOGO_TRANS_B64+'" alt="">'+
+    '<div class="sig-bar"></div>'+
+    '<div class="sig-text">'+
+      '<div class="sig-name">'+DTR_SIGNER_NAME+'</div>'+
+      '<div class="sig-title">'+DTR_SIGNER_TITLE+'</div>'+
+      '<div class="sig-email">'+DTR_SIGNER_EMAIL+'</div>'+
+    '</div>'+
   '</div>';
 }
 function getFullOutcomeText(o){
@@ -2518,12 +2521,15 @@ function getPrintBaseStyles(){
     '.badge-orange{background:#FFE7CC !important;color:#B45309 !important}'+
     '.footer{margin-top:26px;padding-top:12px;border-top:1px solid #E2E8F0;font-size:10px;color:#8A94A6;text-align:center;font-weight:400;line-height:1.7}'+
     '.footer .footer-link{color:#1C6EBF;font-weight:500}'+
-    // Standard sign-off on every exported PDF (see getPrintSignatureHTML).
-    '.sig-block{margin-top:30px;page-break-inside:avoid}'+
-    '.sig-rule{width:210px;border-top:1px solid #1A1D23;margin-bottom:6px}'+
-    '.sig-name{font-size:12.5px;font-weight:700;color:#1A1D23;line-height:1.35}'+
-    '.sig-title{font-size:10.5px;color:#6B7280;line-height:1.45}'+
-    '.sig-email{font-size:10.5px;color:#1C6EBF;margin-top:1px}'+
+    // Standard sign-off on every exported PDF (see getPrintSignatureHTML),
+    // laid out like the company email signature: logo, brand-blue rule,
+    // then name / title / email. #184CA1 is sampled from the logo artwork.
+    '.sig-block{margin-top:46px;display:flex;align-items:center;gap:20px;page-break-inside:avoid}'+
+    '.sig-logo{height:58px;width:auto;object-fit:contain}'+
+    '.sig-bar{width:2px;align-self:stretch;min-height:56px;background:#184CA1 !important}'+
+    '.sig-name{font-size:15.5px;font-weight:700;color:#184CA1;line-height:1.25;letter-spacing:-.2px}'+
+    '.sig-title{font-size:11px;color:#1A1D23;margin-top:4px;line-height:1.45}'+
+    '.sig-email{font-size:11px;color:#184CA1;margin-top:3px}'+
     '@media print{html,body{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important}body{padding:0}.page{padding:20px 28px;max-width:100%}button{display:none !important}.det-field{background:#F2F4F7 !important}.text-box{background:#F2F4F7 !important}.badge-green{background:#D1F5E0 !important;color:#0A7C3E !important}.badge-orange{background:#FFE7CC !important;color:#B45309 !important}}'
   );
 }
@@ -3675,7 +3681,7 @@ function printPartsInventory(){
 // (getRepairNotesText/partYearFromNotes), because on older records they live
 // inside the [YEAR:...|REPNOTES:...] metadata rather than in their own
 // columns - reading only the columns silently drops those tickets.
-var IR_DEFAULT_ISSUE_KW='turning on, turn on, turns on, wont turn on, won\'t turn on, not turning on, does not turn on, powers off, power off, powering off, shuts off, shutting off, shut down, no power, dead, will not boot, wont boot, boot loop, restarting, on and off';
+var IR_DEFAULT_ISSUE_KW='turning on, turn on, turns on, power on, powers on, wont turn on, won\'t turn on, not turning on, does not turn on, turn off, turns off, powers off, power off, powering off, shuts off, shutting off, shut down, no power, dead, will not boot, wont boot, boot loop, restarting, on and off';
 var IR_DEFAULT_NOTES_KW='motherboard, mother board, mobo, main board, flash failed, flashing failed, failed to flash';
 
 function irKeywords(id){
@@ -3687,6 +3693,43 @@ function irMatchesAny(text,kws){
   var t=String(text).toLowerCase();
   for(var i=0;i<kws.length;i++){if(t.indexOf(kws[i])!==-1)return true;}
   return false;
+}
+// What was actually DONE to repair the device, pulled out of the
+// technician's notes - not the ticket's disposition. "Replacement Sent to
+// Customer" says what happened to the unit, not what was repaired, so it
+// deliberately produces no action here.
+//
+// A part only counts as replaced when a replacement verb appears in the
+// SAME clause as the part name, so "replaced the motherboard, screen was
+// fine" doesn't also report a screen replacement, and "motherboard tested
+// OK" doesn't report one at all.
+var IR_ACTION_PARTS=[
+  {label:'Motherboard replaced',  re:/mother\s*board|\bmobo\b|main\s*board/i},
+  {label:'Screen replaced',       re:/\bscreens?\b|\blcd\b|\bdisplay\b|\bpanel\b/i},
+  {label:'WiFi antenna replaced', re:/wi-?fi\s*antenna|\bantennas?\b/i},
+  {label:'Speaker replaced',      re:/\bspeakers?\b/i},
+  {label:'Power board replaced',  re:/power\s*(board|supply)/i},
+  {label:'Battery replaced',      re:/\bbattery\b/i},
+  {label:'Cable replaced',        re:/\bcables?\b|\bribbon\b|\bconnector\b/i}
+];
+var IR_REPLACE_VERB=/\b(replac|swap|chang|install|fitted|put\s+in)\w*|\bnew\b/i;
+var IR_FLASH_FAIL=/flash\w*[^.]{0,40}(fail|unsuccessful|did\s?n.?t\s+work)|fail\w*[^.]{0,40}flash/i;
+
+function irRepairActions(notes){
+  var out=[];
+  if(!notes)return out;
+  var clauses=String(notes).split(/[.;\n]|,\s*(?=[a-z])/i);
+  IR_ACTION_PARTS.forEach(function(a){
+    for(var i=0;i<clauses.length;i++){
+      if(a.re.test(clauses[i])&&IR_REPLACE_VERB.test(clauses[i])){out.push(a.label);return;}
+    }
+  });
+  if(/flash/i.test(notes)){
+    // A failed flash attempt matters to a supplier in its own right, and
+    // must not be reported as a successful re-flash.
+    out.push(IR_FLASH_FAIL.test(notes)?'Flash attempted — failed':'Device flashed');
+  }
+  return out;
 }
 function issueReportRows(){
   var issueKw=irKeywords('ir-issue-kw'), notesKw=irKeywords('ir-notes-kw');
@@ -3706,6 +3749,7 @@ function issueReportRows(){
     return irMatchesAny(r.issue,issueKw)||irMatchesAny(rn,notesKw);
   }).map(function(r){
     var rn=getRepairNotesText(r);
+    var actions=irRepairActions(rn);
     return {
       zd:r.zdid?('ZD '+r.zdid):(r.ticket||''),
       serial:r.serial||'',
@@ -3713,9 +3757,11 @@ function issueReportRows(){
       year:r.year||partYearFromNotes(r)||'',
       issue:r.issue||'',
       repairNotes:rn||'',
-      outcome:r.outcome?getFullOutcomeText(r.outcome):'',
-      mbReplaced:/mother\s*board|motherboard|mobo|main\s*board/i.test(rn+' '+(r.outcome||'')),
-      flashFailed:/flash\w*[^.]{0,40}(fail|unsuccessful)|fail\w*[^.]{0,40}flash/i.test(rn),
+      actions:actions,
+      // Derived from the same verb-aware match as the column, so the summary
+      // count can't disagree with what the rows actually show.
+      mbReplaced:actions.indexOf('Motherboard replaced')!==-1,
+      flashFailed:IR_FLASH_FAIL.test(rn||''),
       status:r.status||'',
       opened:r.createdAt?String(r.createdAt).slice(0,10):'',
       closed:r.closedAt?String(r.closedAt).slice(0,10):''
@@ -3750,9 +3796,9 @@ function closeIssueReportModal(){document.getElementById('issueReportModal').cla
 function exportIssueReportCSV(){
   var rows=issueReportRows();
   if(!rows.length){toast('No tickets match those filters.');return;}
-  var labels=['ZD / Ticket','Serial #','Device Size','Year','Issue','Repair Findings','Outcome','Motherboard Replaced','Flash Failed','Status','Opened','Closed'];
+  var labels=['ZD / Ticket','Serial #','Device Size','Year','Issue','Repair Findings','Repair Performed','Motherboard Replaced','Flash Failed','Status','Opened','Closed'];
   var csv=labels.join(',')+'\r\n'+rows.map(function(r){
-    return [r.zd,r.serial,r.size,r.year,r.issue,r.repairNotes,r.outcome,r.mbReplaced?'YES':'',r.flashFailed?'YES':'',r.status,r.opened,r.closed]
+    return [r.zd,r.serial,r.size,r.year,r.issue,r.repairNotes,r.actions.join('; '),r.mbReplaced?'YES':'',r.flashFailed?'YES':'',r.status,r.opened,r.closed]
       .map(csvEscape).join(',');
   }).join('\r\n');
   var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
@@ -3785,7 +3831,9 @@ function printIssueReport(){
     '.serial-cell{border-bottom:1px solid #A8B0BD !important;height:15px}'+
     '.c-size{width:88px}.c-year{width:38px}.c-out{width:122px}'+
     '.muted{color:#A8B0BD}'+
-    '.mb-flag{display:block;margin-top:3px;font-size:8.5px;font-weight:700;letter-spacing:.3px;color:#991B1B}'+
+    // One repair action per line, so a device with several reads cleanly.
+    '.act{display:block;font-weight:600;color:#184CA1;line-height:1.4}'+
+    '.act+.act{margin-top:2px}'+
     '.sumbar{display:flex;gap:26px;background:#F2F4F7 !important;border-radius:8px;padding:12px 15px}'+
     '.sumbar div{font-size:10.5px;color:#6B7280}.sumbar strong{display:block;font-size:18px;color:#1A1D23;margin-top:2px}'+
     '.crit{font-size:9.5px;color:#8A94A6;margin-top:14px;line-height:1.55;padding-top:9px;border-top:1px solid #EDEFF2}'+
@@ -3803,16 +3851,17 @@ function printIssueReport(){
 
   h+='<table class="inv-tbl"><thead><tr>'+
      '<th class="c-zd nw">ZD</th><th class="c-ser nw">Serial #</th><th class="c-size nw">Size</th><th class="c-year nw">Year</th>'+
-     '<th>Reported Issue</th><th>Repair Findings</th><th class="c-out">Outcome</th>'+
+     '<th>Reported Issue</th><th>Repair Findings</th><th class="c-out">Repair Performed</th>'+
      '</tr></thead><tbody>';
   rows.forEach(function(r){
     h+='<tr><td class="c-zd nw">'+_pe(r.zd)+'</td>'+
        '<td class="c-ser">'+(r.serial?_pe(r.serial):'<div class="serial-cell"></div>')+'</td>'+
        '<td class="c-size">'+_pe(r.size||'--')+'</td><td class="c-year nw">'+_pe(r.year||'--')+'</td>'+
        '<td>'+_pe(r.issue||'--')+'</td>'+
-       '<td>'+(r.repairNotes?_pe(r.repairNotes):'<span class="muted">not recorded</span>')+
-         (r.mbReplaced?'<span class="mb-flag">MOTHERBOARD REPLACED</span>':'')+'</td>'+
-       '<td class="c-out">'+(r.outcome&&r.outcome!=='--'?_pe(r.outcome):'<span class="muted">open</span>')+'</td></tr>';
+       '<td>'+(r.repairNotes?_pe(r.repairNotes):'<span class="muted">not recorded</span>')+'</td>'+
+       '<td class="c-out">'+(r.actions.length
+          ? r.actions.map(function(a){return'<span class="act">'+_pe(a)+'</span>';}).join('')
+          : '<span class="muted">no repair recorded</span>')+'</td></tr>';
   });
   h+='</tbody></table>';
 
