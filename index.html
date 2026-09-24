@@ -1067,7 +1067,7 @@ input:checked+.slider:before{transform:translateX(16px)}
 // Bumped on every deploy. Shown in Settings -> System -> App Version, so
 // "did my change actually go live?" is answerable by looking, instead of
 // guessing whether the browser or CDN served a stale copy of this file.
-var APP_VERSION = 'b20 - 2026-09-24';
+var APP_VERSION = 'b21 - 2026-09-24';
 var SB_URL = 'https://aafszbfonkhwgiykwqrz.supabase.co';
 var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFhZnN6YmZvbmtod2dpeWt3cXJ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0NDM3MDAsImV4cCI6MjA5MDAxOTcwMH0.Vrmdjzg0HPNoPqWr9pREsAx5THBk8hkjBERggwidTO8';
 
@@ -2524,12 +2524,14 @@ function getPrintBaseStyles(){
     // Standard sign-off on every exported PDF (see getPrintSignatureHTML),
     // laid out like the company email signature: logo, brand-blue rule,
     // then name / title / email. #184CA1 is sampled from the logo artwork.
-    '.sig-block{margin-top:46px;display:flex;align-items:center;gap:20px;page-break-inside:avoid}'+
-    '.sig-logo{height:58px;width:auto;object-fit:contain}'+
-    '.sig-bar{width:2px;align-self:stretch;min-height:56px;background:#184CA1 !important}'+
-    '.sig-name{font-size:15.5px;font-weight:700;color:#184CA1;line-height:1.25;letter-spacing:-.2px}'+
-    '.sig-title{font-size:11px;color:#1A1D23;margin-top:4px;line-height:1.45}'+
-    '.sig-email{font-size:11px;color:#184CA1;margin-top:3px}'+
+    // Sits well down the page, clear of the content above it.
+    '.sig-block{margin-top:104px;display:flex;align-items:center;gap:26px;page-break-inside:avoid}'+
+    '.sig-logo{height:76px;width:auto;object-fit:contain;flex-shrink:0}'+
+    '.sig-bar{width:2px;align-self:stretch;min-height:74px;background:#184CA1 !important}'+
+    '.sig-text{padding:3px 0}'+
+    '.sig-name{font-size:19px;font-weight:700;color:#184CA1;line-height:1.2;letter-spacing:-.2px}'+
+    '.sig-title{font-size:12.5px;color:#1A1D23;margin-top:9px;line-height:1.5}'+
+    '.sig-email{font-size:12.5px;color:#184CA1;margin-top:8px;line-height:1.4}'+
     '@media print{html,body{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important}body{padding:0}.page{padding:20px 28px;max-width:100%}button{display:none !important}.det-field{background:#F2F4F7 !important}.text-box{background:#F2F4F7 !important}.badge-green{background:#D1F5E0 !important;color:#0A7C3E !important}.badge-orange{background:#FFE7CC !important;color:#B45309 !important}}'
   );
 }
@@ -3810,6 +3812,15 @@ function exportIssueReportCSV(){
   toast('Exported '+rows.length+' tickets to CSV');
 }
 
+// Formats a YYYY-MM-DD date input value for display. Built from the parts
+// rather than new Date(ymd), which parses as UTC midnight and can render as
+// the previous day in a negative-offset timezone.
+var IR_MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function irFmtDate(ymd){
+  var m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd||'');
+  if(!m)return ymd||'any';
+  return IR_MONTHS[parseInt(m[2],10)-1]+' '+parseInt(m[3],10)+', '+m[1];
+}
 function printIssueReport(){
   var rows=issueReportRows();
   if(!rows.length){toast('No tickets match those filters.');return;}
@@ -3847,7 +3858,7 @@ function printIssueReport(){
 
   h+='<div class="sumbar"><div>Devices Listed<strong>'+rows.length+'</strong></div>'+
      '<div>Motherboard Replaced<strong>'+mbCount+'</strong></div>'+
-     '<div>Date Range &middot; '+(dateField==='closed'?'closed':'opened')+'<strong style="font-size:13px">'+_pe(from||'any')+' &rarr; '+_pe(to||'any')+'</strong></div></div>';
+     '<div>Date Range &middot; by date '+(dateField==='closed'?'closed':'opened')+'<strong style="font-size:13px">'+_pe(irFmtDate(from))+' &ndash; '+_pe(irFmtDate(to))+'</strong></div></div>';
 
   h+='<table class="inv-tbl"><thead><tr>'+
      '<th class="c-zd nw">ZD</th><th class="c-ser nw">Serial #</th><th class="c-size nw">Size</th><th class="c-year nw">Year</th>'+
