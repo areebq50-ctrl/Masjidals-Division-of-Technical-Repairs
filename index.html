@@ -1070,7 +1070,7 @@ input:checked+.slider:before{transform:translateX(16px)}
 // Bumped on every deploy. Shown in Settings -> System -> App Version, so
 // "did my change actually go live?" is answerable by looking, instead of
 // guessing whether the browser or CDN served a stale copy of this file.
-var APP_VERSION = 'b31 - 2026-09-24';
+var APP_VERSION = 'b32 - 2026-09-24';
 var SB_URL = 'https://aafszbfonkhwgiykwqrz.supabase.co';
 var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFhZnN6YmZvbmtod2dpeWt3cXJ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0NDM3MDAsImV4cCI6MjA5MDAxOTcwMH0.Vrmdjzg0HPNoPqWr9pREsAx5THBk8hkjBERggwidTO8';
 
@@ -4019,11 +4019,26 @@ function irRepairActions(notes){
 // from any set of repairs - the keyword report, or the tickets an AI answer
 // identified.
 function buildIssueRows(repairs){
+  // Guard against the same record being rendered twice. Two DIFFERENT
+  // repairs can legitimately share one Zendesk ticket (a replacement device
+  // that also failed), so this dedupes on the record id - never on zdid,
+  // which would silently drop a real second repair.
+  var seen={};
+  repairs=repairs.filter(function(r){
+    var k=r&&r.id;
+    if(!k)return true;
+    if(seen[k])return false;
+    seen[k]=true;return true;
+  });
   return repairs.map(function(r){
     var rn=getRepairNotesText(r);
     var actions=irRepairActions(rn);
     return {
       zd:r.zdid?('ZD '+r.zdid):(r.ticket||''),
+      // Shown under the ZD so two repairs on the same Zendesk ticket are
+      // visibly distinct rather than looking like a duplicated row.
+      ticket:r.ticket||'',
+      isFollowUp:!!r.relatedTo,
       serial:r.serial||'',
       size:r.size||'',
       year:r.year||partYearFromNotes(r)||'',
@@ -4123,7 +4138,8 @@ function issueReportDocHTML(opts){
     '.inv-tbl td{padding:9px 8px;border-bottom:1px solid #EDEFF2;vertical-align:top;line-height:1.45}'+
     '.inv-tbl tr:last-child td{border-bottom:none}'+
     '.inv-tbl td.nw,.inv-tbl th.nw{white-space:nowrap}'+
-    '.c-zd{width:66px;font-weight:700}'+
+    '.c-zd{width:76px;font-weight:700}'+
+    '.sub-id{display:block;font-weight:400;font-size:8.5px;color:#8A94A6;margin-top:2px;letter-spacing:.2px}'+
     // Serial is an empty write-in box - most customer repairs have no serial
     // on file, so it's filled in by hand on paper.
     // Serial gets its own full-width line UNDER each device instead of a
@@ -4160,7 +4176,8 @@ function issueReportDocHTML(opts){
      '<th>Reported Issue</th><th>Repair Findings</th><th class="c-out">Repair Performed</th>'+
      '</tr></thead>';
   rows.forEach(function(r){
-    h+='<tbody class="dev"><tr class="dev-row"><td class="c-zd nw">'+_pe(r.zd)+'</td>'+
+    h+='<tbody class="dev"><tr class="dev-row"><td class="c-zd nw">'+_pe(r.zd)+
+       (r.ticket?'<span class="sub-id">'+_pe(r.ticket)+(r.isFollowUp?' &middot; follow-up':'')+'</span>':'')+'</td>'+
        '<td class="c-size">'+_pe(r.size||'--')+'</td><td class="c-year nw">'+_pe(r.year||'--')+'</td>'+
        '<td>'+_pe(r.issue||'--')+'</td>'+
        '<td>'+(r.repairNotes?_pe(r.repairNotes):'<span class="muted">not recorded</span>')+'</td>'+
