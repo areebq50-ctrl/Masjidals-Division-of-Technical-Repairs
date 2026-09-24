@@ -675,6 +675,7 @@ input:checked+.slider:before{transform:translateX(16px)}
           <button type="button" class="ai-chip" onclick="askAIChip(this)">Which device size has the most issues?</button>
           <button type="button" class="ai-chip" onclick="askAIChip(this)">Android 6 vs 11 breakdown</button>
           <button type="button" class="ai-chip" onclick="askAIChip(this)">What are the top issues reported?</button>
+          <button type="button" class="ai-chip" onclick="checkAIConnection()" title="Check whether the AI service is reachable and configured">Check AI connection</button>
         </div>
         <div class="ai-panel-inputbar">
           <textarea id="aiQuestion" class="ai-input" placeholder="Message Masjidal AI…" rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();askAI();}" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"></textarea>
@@ -1067,7 +1068,7 @@ input:checked+.slider:before{transform:translateX(16px)}
 // Bumped on every deploy. Shown in Settings -> System -> App Version, so
 // "did my change actually go live?" is answerable by looking, instead of
 // guessing whether the browser or CDN served a stale copy of this file.
-var APP_VERSION = 'b21 - 2026-09-24';
+var APP_VERSION = 'b22 - 2026-09-24';
 var SB_URL = 'https://aafszbfonkhwgiykwqrz.supabase.co';
 var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFhZnN6YmZvbmtod2dpeWt3cXJ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0NDM3MDAsImV4cCI6MjA5MDAxOTcwMH0.Vrmdjzg0HPNoPqWr9pREsAx5THBk8hkjBERggwidTO8';
 
@@ -1851,6 +1852,41 @@ function askAIChip(el){
   document.getElementById('aiQuestion').value=el.textContent;
   askAI();
 }
+// Asks the ai-ask function to report on its own Gemini configuration (key
+// present? accepted by Google? which model resolved? does a test call
+// work?) and prints the verdict in the chat. Turns "the AI isn't working"
+// into a specific, actionable answer without needing the server logs.
+async function checkAIConnection(){
+  var convo=document.getElementById('aiConvo');
+  var chipRow=document.getElementById('aiChipRow');if(chipRow)chipRow.style.display='none';
+  var qId='diag'+Date.now();
+  convo.insertAdjacentHTML('beforeend',
+    '<div class="ai-msg-row user"><div class="ai-bubble">Check AI connection</div></div>'+
+    '<div class="ai-msg-row ai"><div class="ai-msg-avatar">'+AI_AVATAR_SVG+'</div><div class="ai-bubble" id="'+qId+'">Checking…</div></div>'
+  );
+  convo.scrollTop=convo.scrollHeight;
+  var box=document.getElementById(qId);
+  try{
+    var resp=await fetch('/api/ai-ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({diagnose:true})});
+    var result=await resp.json();
+    var d=result.diagnostics;
+    if(!d){box.textContent='Diagnostics unavailable (HTTP '+resp.status+'). The site may still be deploying the latest version.';return;}
+    var lines=[d.verdict||'No verdict returned.',''];
+    lines.push('API key set: '+(d.keyPresent?'yes ('+d.keyLength+' chars)':'NO'));
+    if(d.configuredModel)lines.push('GEMINI_MODEL override: '+d.configuredModel);
+    if(d.usableModelCount!=null)lines.push('Models available to this key: '+d.usableModelCount);
+    if(d.chosenModel)lines.push('Model selected: '+d.chosenModel);
+    if(d.sampleModels&&d.sampleModels.length)lines.push('Examples: '+d.sampleModels.join(', '));
+    if(d.listModelsError)lines.push('Model list error: '+d.listModelsError);
+    if(d.testCallError)lines.push('Test call error: '+d.testCallError);
+    box.textContent=lines.join('\n');
+    box.style.whiteSpace='pre-wrap';
+  }catch(e){
+    console.error(e);
+    box.textContent='Could not reach the AI service at all. If the site was just deployed, wait a moment and try again.';
+  }
+  convo.scrollTop=convo.scrollHeight;
+}
 async function askAI(){
   var qEl=document.getElementById('aiQuestion');
   var question=qEl.value.trim();
@@ -2521,17 +2557,15 @@ function getPrintBaseStyles(){
     '.badge-orange{background:#FFE7CC !important;color:#B45309 !important}'+
     '.footer{margin-top:26px;padding-top:12px;border-top:1px solid #E2E8F0;font-size:10px;color:#8A94A6;text-align:center;font-weight:400;line-height:1.7}'+
     '.footer .footer-link{color:#1C6EBF;font-weight:500}'+
-    // Standard sign-off on every exported PDF (see getPrintSignatureHTML),
-    // laid out like the company email signature: logo, brand-blue rule,
-    // then name / title / email. #184CA1 is sampled from the logo artwork.
-    // Sits well down the page, clear of the content above it.
-    '.sig-block{margin-top:104px;display:flex;align-items:center;gap:26px;page-break-inside:avoid}'+
-    '.sig-logo{height:76px;width:auto;object-fit:contain;flex-shrink:0}'+
-    '.sig-bar{width:2px;align-self:stretch;min-height:74px;background:#184CA1 !important}'+
-    '.sig-text{padding:3px 0}'+
-    '.sig-name{font-size:19px;font-weight:700;color:#184CA1;line-height:1.2;letter-spacing:-.2px}'+
-    '.sig-title{font-size:12.5px;color:#1A1D23;margin-top:9px;line-height:1.5}'+
-    '.sig-email{font-size:12.5px;color:#184CA1;margin-top:8px;line-height:1.4}'+
+    // Standard sign-off on every exported PDF (see getPrintSignatureHTML):
+    // a compact footer strip - logo, brand-blue rule, then name / title /
+    // email. #184CA1 is sampled from the logo artwork.
+    '.sig-block{margin-top:38px;padding-top:11px;border-top:1px solid #E2E8F0;display:flex;align-items:center;gap:13px;page-break-inside:avoid}'+
+    '.sig-logo{height:30px;width:auto;object-fit:contain;flex-shrink:0}'+
+    '.sig-bar{width:1.5px;align-self:stretch;min-height:28px;background:#184CA1 !important}'+
+    '.sig-name{font-size:11px;font-weight:700;color:#184CA1;line-height:1.35}'+
+    '.sig-title{font-size:9.5px;color:#6B7280;line-height:1.4}'+
+    '.sig-email{font-size:9.5px;color:#184CA1;line-height:1.4}'+
     '@media print{html,body{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important}body{padding:0}.page{padding:20px 28px;max-width:100%}button{display:none !important}.det-field{background:#F2F4F7 !important}.text-box{background:#F2F4F7 !important}.badge-green{background:#D1F5E0 !important;color:#0A7C3E !important}.badge-orange{background:#FFE7CC !important;color:#B45309 !important}}'
   );
 }

@@ -51,14 +51,93 @@ var SYSTEM_PROMPT = 'You are a data analyst answering questions about a device r
   'ALSO use the table when the question asks you to LIST specific tickets/devices matching some criteria. In that case put one row PER TICKET: "label" is the ticket\'s Zendesk number formatted as "ZD 13082" (use the zdid field; if zdid is null, use the device size and year instead), and "value" is a short description combining what the issue was and what was done about it, drawn from issue/repairNotes/outcome - e.g. "Turns on and off - motherboard replaced". Include every matching ticket, and state the total count in the answer text. ' +
   'When the question is about what was DONE to a device (a part replaced, a repair performed, e.g. "which ones had a motherboard replacement"), judge that from repairNotes first and outcome second - do NOT infer it from the issue text, which only describes the customer\'s complaint. If repairNotes is null for a ticket, you cannot tell what was done to it, so do not claim a specific repair was performed on it.';
 
+// Model names get retired - gemini-2.0-flash was hardcoded here until
+// Google shut it down on 2026-06-01, which broke Ask AI outright. Rather
+// than hardcode a replacement that will eventually die the same way, ask
+// Google which models the key can actually use and pick from that.
+var MODEL_PREFERENCE = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+
+async function listUsableModels(apiKey) {
+  var controller = new AbortController();
+  var t = setTimeout(function () { controller.abort(); }, 10000);
+  try {
+    var r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?key=' + apiKey, { signal: controller.signal });
+    if (!r.ok) return { error: 'ListModels returned ' + r.status + ': ' + (await r.text()).substring(0, 200) };
+    var d = await r.json();
+    var names = (d.models || [])
+      .filter(function (m) { return (m.supportedGenerationMethods || []).indexOf('generateContent') !== -1; })
+      .map(function (m) { return String(m.name || '').replace(/^models\//, ''); })
+      .filter(Boolean);
+    return { models: names };
+  } catch (e) {
+    return { error: e.name === 'AbortError' ? 'ListModels timed out' : String(e && e.message || e) };
+  } finally { clearTimeout(t); }
+}
+
+// Prefer our known-good names in order, then any flash-class model, then
+// anything at all that can generate content.
+function pickModel(available) {
+  for (var i = 0; i < MODEL_PREFERENCE.length; i++) {
+    if (available.indexOf(MODEL_PREFERENCE[i]) !== -1) return MODEL_PREFERENCE[i];
+  }
+  var flash = available.filter(function (n) { return /flash/i.test(n) && !/thinking|image|audio|tts|embed/i.test(n); });
+  if (flash.length) return flash[0];
+  var gen = available.filter(function (n) { return /^gemini/i.test(n) && !/embed|image|audio|tts/i.test(n); });
+  return gen[0] || null;
+}
+
+// Reports what's actually wrong with the Gemini setup, so a failure can be
+// diagnosed from the app instead of guessed at. Never returns the key.
+async function runDiagnostics(apiKey) {
+  var out = { keyPresent: !!apiKey, keyLength: apiKey ? apiKey.length : 0, configuredModel: process.env.GEMINI_MODEL || null };
+  if (!apiKey) { out.verdict = 'GEMINI_API_KEY is not set in Netlify. Add it under Site settings -> Environment variables, then redeploy.'; return out; }
+  var listed = await listUsableModels(apiKey);
+  if (listed.error) {
+    out.listModelsError = listed.error;
+    out.verdict = /API key not valid|API_KEY_INVALID|401|403/i.test(listed.error)
+      ? 'The GEMINI_API_KEY is set but Google rejected it. Generate a new key at aistudio.google.com/apikey and update it in Netlify, then redeploy.'
+      : 'Could not reach Google to list models: ' + listed.error;
+    return out;
+  }
+  out.usableModelCount = listed.models.length;
+  out.sampleModels = listed.models.slice(0, 8);
+  var chosen = pickModel(listed.models);
+  out.chosenModel = chosen;
+  if (!chosen) { out.verdict = 'The key works, but it has no models that support generateContent. Check the key\'s project has the Generative Language API enabled.'; return out; }
+  // Smallest possible real call, to prove generation itself works.
+  try {
+    var r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + chosen + ':generateContent?key=' + apiKey, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'Reply with the word OK.' }] }], generationConfig: { maxOutputTokens: 200 } })
+    });
+    out.testCallStatus = r.status;
+    if (!r.ok) {
+      var txt = await r.text();
+      out.testCallError = txt.substring(0, 300);
+      out.verdict = r.status === 429
+        ? 'The key works but is being rate limited (quota exceeded). If it is a free-tier key, enable billing on its Google Cloud project.'
+        : 'Model "' + chosen + '" rejected a test call with HTTP ' + r.status + '. See testCallError.';
+      return out;
+    }
+    out.verdict = 'Working. Model "' + chosen + '" responded successfully.';
+  } catch (e) {
+    out.testCallError = String(e && e.message || e);
+    out.verdict = 'Test call to "' + chosen + '" failed: ' + out.testCallError;
+  }
+  return out;
+}
+
 exports.handler = async function (event) {
   if (event.httpMethod !== 'POST') return json(405, { error: 'Method not allowed' });
 
   try {
     var apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) return json(200, { answer: null, message: 'Ask AI is not configured yet - add GEMINI_API_KEY in Netlify env vars. See SETUP.md.' });
 
     var body = JSON.parse(event.body || '{}');
+    if (body.diagnose === true) return json(200, { diagnostics: await runDiagnostics(apiKey) });
+
+    if (!apiKey) return json(200, { answer: null, message: 'Ask AI is not configured yet - add GEMINI_API_KEY in Netlify env vars. See SETUP.md.' });
+
     var question = (body.question || '').trim();
     var data = Array.isArray(body.data) ? body.data : [];
     // Prefer the browser's local date (matches what the person asking means
@@ -130,12 +209,24 @@ exports.handler = async function (event) {
       throw e;
     }
 
-    // If the model name itself is the problem (renamed/retired again in the
-    // future) and no explicit GEMINI_MODEL override is set, retry once
-    // against a specific known-good version rather than failing outright.
+    // If the model name itself is the problem (retired or renamed, which has
+    // already happened once here), ask Google what this key CAN use and
+    // retry with that, instead of falling back to another hardcoded name
+    // that may be dead too.
     if (!r.ok && r.status === 404 && !process.env.GEMINI_MODEL) {
-      console.error('Gemini model "'+primaryModel+'" not found, retrying with gemini-2.5-flash');
-      r = await callGemini('gemini-2.5-flash', false);
+      console.error('Gemini model "' + primaryModel + '" not found, discovering a replacement');
+      var listed = await listUsableModels(apiKey);
+      var replacement = listed.models ? pickModel(listed.models) : null;
+      if (replacement && replacement !== primaryModel) {
+        console.error('Retrying with discovered model "' + replacement + '"');
+        r = await callGemini(replacement, false);
+      } else if (listed.error) {
+        return json(502, { error: 'AI model unavailable',
+          detail: 'Model "' + primaryModel + '" no longer exists, and the model list could not be fetched to find a replacement (' + listed.error + ').' });
+      } else {
+        return json(502, { error: 'AI model unavailable',
+          detail: 'Model "' + primaryModel + '" no longer exists and no usable replacement was found for this API key.' });
+      }
     }
 
     // If thinkingConfig itself isn't supported by whichever model resolved,
