@@ -73,11 +73,47 @@ async function lookupZendesk(zdid){
       if(ar.ok){var adata=await ar.json();assignedAgent=(adata.user||{}).name||'';}
     }
 
+    // Device serial. Support asks the customer to send it in on the ticket,
+    // so it usually arrives in a later reply rather than the original
+    // description - the comments have to be read, not just the ticket body.
+    var serial=extractSerial([ticket.subject||'',ticket.description||'']);
+    try{
+      var cr=await fetch('https://'+subdomain+'.zendesk.com/api/v2/tickets/'+encodeURIComponent(zdid)+'/comments.json?per_page=100',{headers:headers});
+      if(cr.ok){
+        var cdata=await cr.json();
+        var bodies=(cdata.comments||[]).map(function(c){return String(c.body||c.plain_body||'');});
+        // Scanned newest-first so a corrected serial supersedes an earlier
+        // typo, rather than the first one posted winning.
+        var fromComments=extractSerial(bodies.reverse());
+        if(fromComments)serial=fromComments;
+      }
+    }catch(e){ console.error('Zendesk comment fetch failed (non-fatal)',e); }
+
     return {name:u.name||'',email:u.email||'',phone:u.phone||'',assignedAgent:assignedAgent,
-      subject:ticket.subject||'',description:ticket.description||''};
+      serial:serial||'',subject:ticket.subject||'',description:ticket.description||''};
   }catch(e){
     return {error:'Zendesk request failed: '+describeFetchError(e)};
   }
+}
+
+// Pulls a device serial out of ticket text. Masjidal serials share a fixed
+// prefix, which is a far more reliable signal than guessing at any long
+// alphanumeric token, so that is tried first; the labelled form ("Serial:
+// ...", "S/N ...") is a fallback for anything that doesn't carry it.
+// Returns '' when nothing looks like a serial, never a guess.
+var SERIAL_PREFIX_RE=/\bHPFTMDJMA[A-Z0-9-]{2,}\b/i;
+var SERIAL_LABELLED_RE=/(?:serial\s*(?:number|no\.?|#)?|s\s*\/\s*n|\bsn\b)\s*[:#-]?\s*([A-Z0-9][A-Z0-9-]{7,})/i;
+function extractSerial(texts){
+  var list=(texts||[]).filter(Boolean);
+  for(var i=0;i<list.length;i++){
+    var m=SERIAL_PREFIX_RE.exec(String(list[i]).slice(0,20000));
+    if(m)return m[0].toUpperCase();
+  }
+  for(var j=0;j<list.length;j++){
+    var m2=SERIAL_LABELLED_RE.exec(String(list[j]).slice(0,20000));
+    if(m2)return m2[1].toUpperCase();
+  }
+  return '';
 }
 
 // Matches a Zendesk agent's name against the shop's fixed "ZD Assigned To"
@@ -193,6 +229,7 @@ exports.handler = async function (event) {
     }
 
     var assignedTo=zd?matchAssignee(zd.assignedAgent):'';
+    var serial=(zd&&zd.serial)||'';
     var issueSummary=zd?await summarizeIssue(zd.subject,zd.description):null;
 
     var merged={
@@ -202,12 +239,13 @@ exports.handler = async function (event) {
       purchaseDate:(sh&&sh.purchaseDate)||null,
       warrantyMonths:(sh&&sh.warrantyMonths)||null,
       assignedTo:assignedTo,
+      serial:serial,
       issueSummary:issueSummary,
       source:[zd?'Zendesk':null,sh?'Shopify':null].filter(Boolean).join(' + ')
     };
     return json(200,{found:true,name:merged.name,email:merged.email,phone:merged.phone,
       purchaseDate:merged.purchaseDate,warrantyMonths:merged.warrantyMonths,
-      assignedTo:merged.assignedTo,issueSummary:merged.issueSummary,source:merged.source});
+      assignedTo:merged.assignedTo,serial:merged.serial,issueSummary:merged.issueSummary,source:merged.source});
   }catch(e){
     console.error(e);
     return json(500,{found:false,error:'Lookup failed',detail:String(e)});

@@ -793,6 +793,7 @@ input:checked+.slider:before{transform:translateX(16px)}
             <option value="Testing Shelf">Testing Shelf</option>
             <option value="Parts / Garbage">Parts / Garbage</option>
           </select></div>
+          <div class="fg"><label>Serial Number</label><input class="fc" id="f-serial-cust" placeholder="Auto-filled from the Zendesk ticket if the customer sent it"></div>
         </div>
       </div>
       <!-- General / Amazon Fields -->
@@ -1069,7 +1070,7 @@ input:checked+.slider:before{transform:translateX(16px)}
 // Bumped on every deploy. Shown in Settings -> System -> App Version, so
 // "did my change actually go live?" is answerable by looking, instead of
 // guessing whether the browser or CDN served a stale copy of this file.
-var APP_VERSION = 'b28 - 2026-09-24';
+var APP_VERSION = 'b29 - 2026-09-24';
 var SB_URL = 'https://aafszbfonkhwgiykwqrz.supabase.co';
 var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFhZnN6YmZvbmtod2dpeWt3cXJ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0NDM3MDAsImV4cCI6MjA5MDAxOTcwMH0.Vrmdjzg0HPNoPqWr9pREsAx5THBk8hkjBERggwidTO8';
 
@@ -3068,6 +3069,9 @@ async function lookupCustomer(auto){
       // Gemini's one-sentence summary of what the customer reported.
       var issueEl=document.getElementById('f-issue');
       if(issueEl&&!issueEl.value.trim()&&data.issueSummary)issueEl.value=data.issueSummary;
+      // Serial the customer sent in on the Zendesk ticket.
+      var serEl=document.getElementById('f-serial-cust');
+      if(serEl&&!serEl.value.trim()&&data.serial)serEl.value=data.serial;
       var statusMsg='Filled in from '+(data.source||'lookup')+' - review before saving.';
       // Shopify order date -> warranty: 12 months standard, 24 months if the
       // order has the "aframewarranty" SKU (extended warranty add-on).
@@ -3132,7 +3136,7 @@ function openNewRepair(){
   editingId=null;warrantyVal=null;outcomeVal='';pendingRelatedTo=null;
   document.getElementById('rmTitle').textContent='New Repair';
   // Clear ALL form fields
-  ['f-zdid','f-ordnum','f-serial','f-location','f-amztrack','f-issue','f-notes','f-repair-notes','f-location-cust','f-year','f-android','f-warranty-date','f-assigned-to','f-custname','f-custemail','f-custphone'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
+  ['f-zdid','f-ordnum','f-serial','f-serial-cust','f-location','f-amztrack','f-issue','f-notes','f-repair-notes','f-location-cust','f-year','f-android','f-warranty-date','f-assigned-to','f-custname','f-custemail','f-custphone'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
   var relBanner=document.getElementById('relatedTicketBanner');if(relBanner)relBanner.classList.add('hidden');
   var custStat=document.getElementById('custLookupStatus');if(custStat)custStat.textContent='';
   var tvCb2=document.getElementById('f-techvisible');if(tvCb2)tvCb2.checked=true; // Default: visible to technicians
@@ -3160,14 +3164,14 @@ function openEdit(id){
   warrantyVal=isVoidedRepair?'voided':r.warranty;
   document.getElementById('rmTitle').textContent='Edit Repair - '+r.ticket;
   // Clear all fields
-  ['f-zdid','f-ordnum','f-serial','f-location','f-amztrack','f-issue','f-notes','f-repair-notes','f-location-cust','f-year','f-android','f-warranty-date','f-custname','f-custemail','f-custphone'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
+  ['f-zdid','f-ordnum','f-serial','f-serial-cust','f-location','f-amztrack','f-issue','f-notes','f-repair-notes','f-location-cust','f-year','f-android','f-warranty-date','f-custname','f-custemail','f-custphone'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
   var relBanner=document.getElementById('relatedTicketBanner');if(relBanner)relBanner.classList.add('hidden');
   var custStat=document.getElementById('custLookupStatus');if(custStat)custStat.textContent='';
   // Populate year dropdown first
   populateYearDropdown();
   // Fill fields
   var setV=function(id,v){var el=document.getElementById(id);if(el&&v!==undefined&&v!==null)el.value=v;};
-  setV('f-zdid',r.zdid);setV('f-ordnum',r.ordnum);setV('f-serial',r.serial);
+  setV('f-zdid',r.zdid);setV('f-ordnum',r.ordnum);setV('f-serial',r.serial);setV('f-serial-cust',r.serial);
   setV('f-custname',r.custName);setV('f-custemail',r.custEmail);setV('f-custphone',r.custPhone);
   // Parse metadata from notes field
   var _yr=r.year||'';
@@ -3274,6 +3278,7 @@ async function saveRepair(){
         d.ordnum=document.getElementById('f-ordnum').value.trim();
         var sc2=document.getElementById('f-size-cust');d.size=sc2?sc2.value:'';
         var lc2=document.getElementById('f-location-cust');d.location=lc2?lc2.value.trim():'';
+        d.serial=(document.getElementById('f-serial-cust')||{value:''}).value.trim();
         d.custName=(document.getElementById('f-custname')||{value:''}).value.trim();
         d.custEmail=(document.getElementById('f-custemail')||{value:''}).value.trim();
         d.custPhone=(document.getElementById('f-custphone')||{value:''}).value.trim();
@@ -3304,7 +3309,7 @@ async function saveRepair(){
         ticket:ticket,type:t,
         zdid:t==='customer'?document.getElementById('f-zdid').value.trim():'',
         ordnum:t==='customer'?document.getElementById('f-ordnum').value.trim():'',
-        serial:t!=='customer'?document.getElementById('f-serial').value.trim():'',
+        serial:t!=='customer'?document.getElementById('f-serial').value.trim():(document.getElementById('f-serial-cust')||{value:''}).value.trim(),
         size:t==='customer'?custSize:document.getElementById('f-size').value,
         location:t==='customer'?custLoc:document.getElementById('f-location').value.trim(),
         amztrack:t==='amazon'?document.getElementById('f-amztrack').value.trim():'',
@@ -4510,7 +4515,7 @@ initApp();
     if(isSupportMode) return;
     editingId=null; warrantyVal=null; outcomeVal='';
     document.getElementById('rmTitle').textContent='New Repair';
-    ['f-zdid','f-ordnum','f-serial','f-location','f-amztrack','f-issue','f-notes','f-repair-notes','f-location-cust','f-year','f-android','f-warranty-date'].forEach(function(id){
+    ['f-zdid','f-ordnum','f-serial','f-serial-cust','f-location','f-amztrack','f-issue','f-notes','f-repair-notes','f-location-cust','f-year','f-android','f-warranty-date'].forEach(function(id){
       var el=document.getElementById(id); if(el) el.value='';
     });
     var assignedTo=document.getElementById('f-assigned-to'); if(assignedTo) assignedTo.value='';
@@ -4714,7 +4719,7 @@ initApp();
     if(isSupportMode) return;
     editingId=null; warrantyVal=null; outcomeVal=''; pendingRelatedTo=null;
     document.getElementById('rmTitle').textContent='New Repair';
-    ['f-zdid','f-ordnum','f-serial','f-location','f-amztrack','f-issue','f-notes','f-repair-notes','f-location-cust','f-year','f-android','f-warranty-date','f-custname','f-custemail','f-custphone'].forEach(function(id){
+    ['f-zdid','f-ordnum','f-serial','f-serial-cust','f-location','f-amztrack','f-issue','f-notes','f-repair-notes','f-location-cust','f-year','f-android','f-warranty-date','f-custname','f-custemail','f-custphone'].forEach(function(id){
       var el=document.getElementById(id); if(el) el.value='';
     });
     var relBanner=document.getElementById('relatedTicketBanner'); if(relBanner) relBanner.classList.add('hidden');
