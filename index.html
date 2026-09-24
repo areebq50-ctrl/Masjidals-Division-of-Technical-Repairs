@@ -675,6 +675,7 @@ input:checked+.slider:before{transform:translateX(16px)}
           <button type="button" class="ai-chip" onclick="askAIChip(this)">Which device size has the most issues?</button>
           <button type="button" class="ai-chip" onclick="askAIChip(this)">Android 6 vs 11 breakdown</button>
           <button type="button" class="ai-chip" onclick="askAIChip(this)">What are the top issues reported?</button>
+          <button type="button" class="ai-chip" onclick="searchWithoutAI()" title="Search your records directly, without using the AI">Search without AI</button>
           <button type="button" class="ai-chip" onclick="checkAIConnection()" title="Check whether the AI service is reachable and configured">Check AI connection</button>
         </div>
         <div class="ai-panel-inputbar">
@@ -1068,7 +1069,7 @@ input:checked+.slider:before{transform:translateX(16px)}
 // Bumped on every deploy. Shown in Settings -> System -> App Version, so
 // "did my change actually go live?" is answerable by looking, instead of
 // guessing whether the browser or CDN served a stale copy of this file.
-var APP_VERSION = 'b27 - 2026-09-24';
+var APP_VERSION = 'b28 - 2026-09-24';
 var SB_URL = 'https://aafszbfonkhwgiykwqrz.supabase.co';
 var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFhZnN6YmZvbmtod2dpeWt3cXJ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0NDM3MDAsImV4cCI6MjA5MDAxOTcwMH0.Vrmdjzg0HPNoPqWr9pREsAx5THBk8hkjBERggwidTO8';
 
@@ -1892,6 +1893,193 @@ async function checkAIConnection(){
 // Exports a Masjidal AI answer as the official DTR PDF - the question, the
 // answer, and its breakdown table if it produced one. Same header/footer as
 // every other exported document.
+// ===== LOCAL SEARCH (no AI) =====
+// Answers the kinds of questions actually asked here - "which devices had
+// X in the past month", "how many 10 inch failed to power on" - by
+// filtering the loaded records directly. It is deliberately dumber than the
+// AI, but it runs in the browser against data already downloaded, so it
+// cannot be rate limited, cannot be overloaded, and cannot invent a ticket.
+// It is the fallback whenever Gemini is unavailable.
+var LQ_STOPWORDS=['the','and','for','with','that','this','from','have','has','had','was','were','are','you','your','our','give','list','show','me','all','any','which','what','how','many','much','devices','device','ticket','tickets','repair','repairs','please','their','them','into','over','past','last','month','week','year','days','day','in','on','of','to','a','is','it','be','by','or','if','at','get','need','number','numbers','serial','size','sizes','also','too','same','one','inch','issue','issues','problem','problems','fault','faults','broken','bad','some','more','new','old','still','been','did','does','doing','went','goes','come','came'];
+var LQ_FAULTS=[
+  {test:/power|turn(?:ing|s)?\s*(?:on|off)|boot|dead|restart|on and off|shut/i,
+   kw:['turning on','turn on','turns on','power on','powers on','power off','powers off','powering off','not turning on','wont turn on','won\'t turn on','shuts off','shutting off','shut down','no power','dead','boot','restarting','on and off']},
+  {test:/screen|display|lcd|flicker|crack|blank/i,
+   kw:['screen','display','lcd','flicker','crack','blank']},
+  {test:/wi-?fi|network|internet|connect/i,
+   kw:['wifi','wi-fi','network','internet','connect']},
+  {test:/audio|sound|speaker|volume|athan|adhan|azan|prayer call/i,
+   kw:['audio','sound','speaker','volume','athan','adhan','azan']},
+  {test:/freez|frozen|crash|lag|slow|stuck|hang/i,
+   kw:['freez','frozen','crash','lag','slow','stuck','hang']},
+  {test:/charg|battery|cable|adapter|plug/i,
+   kw:['charg','battery','cable','adapter','plug']}
+];
+var LQ_REPAIRS=[
+  {test:/mother\s*board|mobo|main\s*board/i, kw:['motherboard','mother board','mobo','main board']},
+  {test:/flash/i, kw:['flash']},
+  {test:/screen\s*(?:replac|swap)|replac\w*\s*screen/i, kw:['screen']},
+  {test:/antenna/i, kw:['antenna']},
+  {test:/speaker\s*(?:replac|swap)/i, kw:['speaker']}
+];
+
+function lqParse(q){
+  var s=String(q||'').toLowerCase();
+  var out={issueKw:[],notesKw:[],sizes:[],androids:[],years:[],from:'',to:'',closedOnly:false,openOnly:false};
+
+  // Date window
+  var m;
+  if((m=/(?:past|last)\s+(\d+)\s*(day|week|month|year)/.exec(s))){
+    var n=parseInt(m[1],10), unit=m[2];
+    var days=unit==='day'?n:unit==='week'?n*7:unit==='month'?n*30:n*365;
+    out.from=lqIso(new Date(Date.now()-days*864e5));out.to=lqIso(new Date());
+  }else if(/(?:past|last|this)\s+month/.test(s)){
+    out.from=lqIso(new Date(Date.now()-30*864e5));out.to=lqIso(new Date());
+  }else if(/(?:past|last|this)\s+week/.test(s)){
+    out.from=lqIso(new Date(Date.now()-7*864e5));out.to=lqIso(new Date());
+  }else if(/(?:past|last)\s+year/.test(s)){
+    out.from=lqIso(new Date(Date.now()-365*864e5));out.to=lqIso(new Date());
+  }
+
+  // Device year(s) - "year 2025", "2025-2026", "from 2025 to 2026"
+  var yrs=s.match(/20\d{2}/g)||[];
+  if(yrs.length){
+    if(/\b(?:19|20)\d{2}\s*(?:-|to|through|and)\s*(?:19|20)\d{2}/.test(s)){
+      var a=parseInt(yrs[0],10), b=parseInt(yrs[1],10);
+      for(var y=Math.min(a,b);y<=Math.max(a,b);y++)out.years.push(String(y));
+    }else{ yrs.forEach(function(y){out.years.push(y);}); }
+  }
+
+  // Device sizes
+  [['8','8"'],['10','10"'],['14','14"']].forEach(function(pair){
+    var re=new RegExp('\\b'+pair[0]+'\\s*(?:"|inch|in\\b)','i');
+    if(re.test(s))out.sizes.push(pair[0]);
+  });
+
+  if(/android\s*6|\ba6\b/.test(s))out.androids.push('Android 6');
+  if(/android\s*11|\ba11\b/.test(s))out.androids.push('Android 11');
+  if(/\bclosed\b|\bresolved\b|\bcompleted tickets\b/.test(s))out.closedOnly=true;
+  if(/\bopen\b|\bongoing\b|\bstill\b|\bpending\b/.test(s))out.openOnly=true;
+
+  LQ_FAULTS.forEach(function(f){if(f.test.test(s))out.issueKw=out.issueKw.concat(f.kw);});
+  LQ_REPAIRS.forEach(function(f){if(f.test.test(s))out.notesKw=out.notesKw.concat(f.kw);});
+
+  // Fall back to the question's own words only when nothing else narrowed
+  // it. If the question already gave real filters (a size, a year, a date
+  // window), searching for its leftover words as well - "issues", "inch" -
+  // matches nothing and wrongly reports zero results.
+  var structural=out.sizes.length||out.years.length||out.androids.length||out.from||out.closedOnly||out.openOnly;
+  if(!out.issueKw.length&&!out.notesKw.length&&!structural){
+    (s.match(/[a-z']{3,}/g)||[]).forEach(function(w){
+      if(LQ_STOPWORDS.indexOf(w)===-1&&out.issueKw.indexOf(w)===-1)out.issueKw.push(w);
+    });
+  }
+  return out;
+}
+function lqIso(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+
+function lqRun(q){
+  var p=lqParse(q);
+  var matched=_repairs.filter(canSeeRep).filter(function(r){
+    if(p.from||p.to){
+      var day=String(r.createdAt||'').slice(0,10);
+      if(!day)return false;
+      if(p.from&&day<p.from)return false;
+      if(p.to&&day>p.to)return false;
+    }
+    if(p.years.length){
+      var yr=r.year||partYearFromNotes(r)||'';
+      if(p.years.indexOf(String(yr))===-1)return false;
+    }
+    if(p.sizes.length){
+      var sz=String(r.size||'');
+      if(!p.sizes.some(function(n){return sz.indexOf(n)===0;}))return false;
+    }
+    if(p.androids.length){
+      var an=r.android||((/AND:([^|\]]*)/.exec(r.notes||'')||[])[1]||'').trim();
+      if(p.androids.indexOf(an)===-1)return false;
+    }
+    if(p.closedOnly&&r.status!=='Closed')return false;
+    if(p.openOnly&&r.status==='Closed')return false;
+    if(!p.issueKw.length&&!p.notesKw.length)return true;
+    return irMatchesAny(r.issue,p.issueKw)||irMatchesAny(getRepairNotesText(r),p.notesKw);
+  });
+  return {parsed:p,repairs:matched};
+}
+function lqDescribe(p,n){
+  var bits=[];
+  if(p.sizes.length)bits.push(p.sizes.map(function(x){return x+'"';}).join('/'));
+  if(p.androids.length)bits.push(p.androids.join('/'));
+  if(p.years.length)bits.push('year '+p.years.join('-'));
+  if(p.from)bits.push('opened '+irFmtDate(p.from)+' to '+irFmtDate(p.to));
+  if(p.closedOnly)bits.push('closed only');
+  if(p.openOnly)bits.push('still open');
+  return n+' ticket'+(n===1?'':'s')+' matched'+(bits.length?' ('+bits.join(', ')+')':'')+'.';
+}
+
+var _lqStore={};
+// Runs the local search and renders the result into the AI conversation,
+// with the same PDF/CSV exports the AI answers offer.
+function runLocalSearch(question,noteHtml){
+  var convo=document.getElementById('aiConvo');
+  var res=lqRun(question);
+  var id='lq'+Date.now();
+  _lqStore[id]={question:question,repairs:res.repairs,parsed:res.parsed};
+  var summary=lqDescribe(res.parsed,res.repairs.length);
+  var html='<div class="ai-msg-row ai"><div class="ai-msg-avatar">'+AI_AVATAR_SVG+'</div><div class="ai-bubble">'+
+    (noteHtml||'')+
+    '<div>'+summary.replace(/</g,'&lt;')+'</div>';
+  if(res.repairs.length){
+    var rows=buildIssueRows(res.repairs).slice(0,15);
+    html+='<table>'+rows.map(function(r){
+      return'<tr><td>'+String(r.zd).replace(/</g,'&lt;')+' &middot; '+String(r.size||'--').replace(/</g,'&lt;')+'</td><td>'+
+        String(r.issue||'--').slice(0,70).replace(/</g,'&lt;')+'</td></tr>';
+    }).join('')+'</table>';
+    if(res.repairs.length>15)html+='<div style="font-size:11px;color:var(--text3);margin-top:6px">Showing 15 of '+res.repairs.length+' - the PDF has them all.</div>';
+    html+='<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">'+
+      '<button class="btn btn-ghost btn-sm" onclick=\'printLocalSearch("'+id+'")\'>Print / PDF</button>'+
+      '<button class="btn btn-ghost btn-sm" onclick=\'exportLocalSearchCSV("'+id+'")\'>Export CSV</button></div>';
+  }else{
+    html+='<div style="font-size:12px;color:var(--text2);margin-top:6px">Try naming the fault plainly - e.g. "will not power on", "screen cracked", "wifi", "motherboard" - plus a period like "past month".</div>';
+  }
+  html+='</div></div>';
+  convo.insertAdjacentHTML('beforeend',html);
+  convo.scrollTop=convo.scrollHeight;
+}
+function printLocalSearch(id){
+  var rec=_lqStore[id];if(!rec||!rec.repairs.length){toast('Nothing to print.');return;}
+  openPrintWindow(issueReportDocHTML({
+    rows:buildIssueRows(rec.repairs),
+    thirdLabel:'Generated From',
+    thirdValue:'Direct search',
+    criteriaHTML:'<strong>Search:</strong> '+_pe(rec.question)+' &nbsp;<strong>Matched:</strong> '+_pe(lqDescribe(rec.parsed,rec.repairs.length))
+  }));
+}
+function exportLocalSearchCSV(id){
+  var rec=_lqStore[id];if(!rec||!rec.repairs.length){toast('Nothing to export.');return;}
+  var rows=buildIssueRows(rec.repairs);
+  var labels=['ZD / Ticket','Serial #','Device Size','Year','Issue','Repair Findings','Repair Performed','Status','Opened','Closed'];
+  var csv=labels.join(',')+'\r\n'+rows.map(function(r){
+    return [r.zd,r.serial,r.size,r.year,r.issue,r.repairNotes,r.actions.join('; '),r.status,r.opened,r.closed].map(csvEscape).join(',');
+  }).join('\r\n');
+  var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url;a.download='masjidal-search-'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('Exported '+rows.length+' tickets to CSV');
+}
+function searchWithoutAI(){
+  var qEl=document.getElementById('aiQuestion');
+  var q=qEl.value.trim();
+  if(!q){toast('Type what you are looking for first.');return;}
+  var chipRow=document.getElementById('aiChipRow');if(chipRow)chipRow.style.display='none';
+  document.getElementById('aiConvo').insertAdjacentHTML('beforeend',
+    '<div class="ai-msg-row user"><div class="ai-bubble">'+q.replace(/</g,'&lt;')+'</div></div>');
+  qEl.value='';qEl.style.height='auto';
+  runLocalSearch(q,'');
+}
 function printAIAnswer(id){
   var rec=_aiTableStore[id];
   if(!rec){toast('That answer is no longer available - ask again.');return;}
@@ -2001,6 +2189,9 @@ async function askAI(){
       var errText=result.message||result.error||('Masjidal AI request failed (HTTP '+resp.status+'). Check the ai-ask function logs in Netlify.');
       if(result.detail)errText+=' — '+result.detail;
       box.textContent=errText;
+      // Don't leave them with nothing: answer it directly from the loaded
+      // records instead. Slower to phrase, but it always works.
+      runLocalSearch(question,'<div style="font-size:11px;color:var(--text3);margin-bottom:6px">Answered from your records directly, without the AI:</div>');
     }else{
       box.textContent=result.answer;
       // Every answer gets export buttons, with or without a table - a
@@ -2023,6 +2214,7 @@ async function askAI(){
     console.error(e);
     var box2=document.getElementById(qId);
     if(box2)box2.textContent=(e.name==='AbortError')?'That took too long to answer (30s+). Try a narrower question - one device size, or a shorter date range.':'Something went wrong asking AI. Try again.';
+    try{runLocalSearch(question,'<div style="font-size:11px;color:var(--text3);margin-bottom:6px">Answered from your records directly, without the AI:</div>');}catch(e2){console.error(e2);}
   }
   clearTimeout(timeoutId);
   convo.scrollTop=convo.scrollHeight;
